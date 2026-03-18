@@ -21,6 +21,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCsrf()) { flash('error', 'Security check failed.'); redirect($_SERVER['REQUEST_URI']); }
 
     $postAction = $_POST['_action'] ?? '';
+    // Load feedback record early so all action handlers (including comment) can use it
+    if ($feedbackId && !isset($fb)) {
+        $fb = DB::fetch("SELECT * FROM ff_feedback WHERE id = ? AND project_id = ?", [$feedbackId, $projectId]);
+    }
 
     // Submit new feedback (admin side)
     if ($postAction === 'create') {
@@ -81,12 +85,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Add comment / internal note
     if ($postAction === 'comment' && $feedbackId) {
-        $content = trim($_POST['content'] ?? '');
+        $content    = trim($_POST['content'] ?? '');
         $isInternal = isset($_POST['is_internal']) ? 1 : 0;
         if (!empty($content)) {
             DB::insert('ff_comments', ['feedback_id' => $feedbackId, 'user_id' => $currentUser['id'], 'content' => $content, 'is_internal' => $isInternal, 'is_admin_reply' => 1]);
             DB::query("UPDATE ff_feedback SET comment_count = comment_count + 1 WHERE id = ?", [$feedbackId]);
             logActivity($projectId, $currentUser['id'], $feedbackId, $isInternal ? 'Added internal note' : 'Added reply');
+
+            // Email the submitter when it's a public (non-internal) reply and they have an email
+            if (!$isInternal && !empty($fb['submitter_email'])) {
+                $recipientName  = $fb['submitter_name'] ?: 'there';
+                $firstName      = explode(' ', trim($recipientName))[0];
+                $projectName    = $currentProject['name'] ?? APP_NAME;
+                $replyerName    = $currentUser['name'] ?? $projectName . ' Team';
+                $feedbackTitle  = $fb['title'] ?? 'your feedback';
+                $boardUrl       = APP_URL . '/public/board.php?slug=' . ($currentProject['slug'] ?? '');
+
+                $emailHtml = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9fafb;font-family:sans-serif">
+<div style="max-width:540px;margin:32px auto;background:#fff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden">
+  <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:24px 28px">
+    <h1 style="margin:0;color:#fff;font-size:18px;font-weight:700">' . htmlspecialchars($projectName) . '</h1>
+    <p style="margin:6px 0 0;color:#e0e7ff;font-size:13px">Reply to your feedback</p>
+  </div>
+  <div style="padding:28px">
+    <p style="color:#374151;font-size:15px;margin:0 0 6px">Hi ' . htmlspecialchars($firstName) . ',</p>
+    <p style="color:#6b7280;font-size:14px;margin:0 0 20px">The team replied to your feedback: <strong>' . htmlspecialchars($feedbackTitle) . '</strong></p>
+    <div style="background:#f3f4f6;border-left:4px solid #6366f1;border-radius:8px;padding:16px 18px;margin-bottom:24px">
+      <p style="margin:0;color:#111827;font-size:14px;line-height:1.7">' . nl2br(htmlspecialchars($content)) . '</p>
+      <p style="margin:10px 0 0;font-size:12px;color:#9ca3af">— ' . htmlspecialchars($replyerName) . '</p>
+    </div>
+    <a href="' . $boardUrl . '" style="display:inline-block;background:#6366f1;color:#fff;font-weight:600;font-size:14px;padding:10px 20px;border-radius:10px;text-decoration:none">View on Feedback Board</a>
+  </div>
+  <div style="padding:16px 28px;border-top:1px solid #f3f4f6;text-align:center">
+    <p style="margin:0;font-size:11px;color:#d1d5db">You received this because you submitted feedback to ' . htmlspecialchars($projectName) . '.</p>
+  </div>
+</div>
+</body></html>';
+
+                $err = '';
+                ffSendMail(
+                    $fb['submitter_email'],
+                    $fb['submitter_name'] ?? '',
+                    $replyerName . ' replied to your feedback',
+                    $emailHtml,
+                    $err
+                );
+                // Note: we don't block the redirect on email failure — reply is saved regardless
+            }
         }
         redirect(APP_URL . '/admin/feedback.php?id=' . $feedbackId . '#comments');
     }
