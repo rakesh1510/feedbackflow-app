@@ -2,8 +2,6 @@
 // FeedbackFlow Installer
 // DELETE this file after installation!
 
-
-
 define('INSTALL_MODE', true);
 require_once __DIR__ . '/config.php';
 

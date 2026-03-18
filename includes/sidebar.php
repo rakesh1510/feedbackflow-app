@@ -100,6 +100,27 @@ if (!$currentProject && !empty($_SESSION['current_project_id'])) {
       Analytics
     </a>
 
+    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 mb-1.5 mt-4">AI Copilot</p>
+
+    <a href="<?= APP_URL ?>/admin/ai-insights.php"
+       class="nav-link <?= $currentPage === 'ai-insights' ? 'active' : '' ?>">
+      <span class="icon"><i class="fas fa-brain"></i></span>
+      AI Insights
+      <?php
+        if (!empty($currentProject)) {
+          $aiInsightCount = DB::count("SELECT COUNT(*) FROM ff_ai_insights WHERE project_id = ? AND is_read = 0", [$currentProject['id']]);
+          if ($aiInsightCount > 0):
+      ?>
+        <span style="margin-left:auto;background:#8b5cf6;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;line-height:1.6"><?= $aiInsightCount ?></span>
+      <?php endif; } ?>
+    </a>
+
+    <a href="<?= APP_URL ?>/admin/ai-copilot.php"
+       class="nav-link <?= $currentPage === 'ai-copilot' ? 'active' : '' ?>">
+      <span class="icon"><i class="fas fa-robot"></i></span>
+      AI Copilot
+    </a>
+
     <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 mb-1.5 mt-4">Manage</p>
 
     <a href="<?= APP_URL ?>/admin/projects.php"
