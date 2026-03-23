@@ -432,3 +432,354 @@ CREATE TABLE IF NOT EXISTS `ff_feedback_links` (
   UNIQUE KEY `token` (`token`),
   KEY `project_id` (`project_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================================
+-- EXTENDED SCHEMA — All 37 Modules
+-- ============================================================
+
+-- Companies (Multi-tenant)
+CREATE TABLE IF NOT EXISTS `ff_companies` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(150) NOT NULL,
+  `slug` varchar(150) NOT NULL UNIQUE,
+  `email` varchar(191) DEFAULT NULL,
+  `phone` varchar(50) DEFAULT NULL,
+  `website` varchar(255) DEFAULT NULL,
+  `logo` varchar(255) DEFAULT NULL,
+  `address` text DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `country` varchar(100) DEFAULT NULL,
+  `timezone` varchar(100) NOT NULL DEFAULT 'UTC',
+  `language` varchar(10) NOT NULL DEFAULT 'en',
+  `plan` enum('free','starter','growth','pro','enterprise') NOT NULL DEFAULT 'free',
+  `plan_expires_at` datetime DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `vat_number` varchar(50) DEFAULT NULL,
+  `billing_email` varchar(191) DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- User ↔ Company mapping
+ALTER TABLE `ff_users` ADD COLUMN IF NOT EXISTS `company_id` int(11) DEFAULT NULL AFTER `id`;
+ALTER TABLE `ff_users` ADD COLUMN IF NOT EXISTS `timezone` varchar(100) DEFAULT 'UTC' AFTER `role`;
+ALTER TABLE `ff_users` ADD COLUMN IF NOT EXISTS `language` varchar(10) DEFAULT 'en' AFTER `timezone`;
+ALTER TABLE `ff_users` ADD COLUMN IF NOT EXISTS `is_super_admin` tinyint(1) NOT NULL DEFAULT 0 AFTER `language`;
+
+-- Suppression List (Module 07)
+CREATE TABLE IF NOT EXISTS `ff_suppression` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `company_id` int(11) DEFAULT NULL,
+  `project_id` int(11) DEFAULT NULL,
+  `type` enum('email','phone','domain') NOT NULL DEFAULT 'email',
+  `value` varchar(255) NOT NULL,
+  `reason` enum('unsubscribe','bounce','complaint','manual','gdpr') NOT NULL DEFAULT 'manual',
+  `added_by` int(11) DEFAULT NULL,
+  `note` text DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `company_id` (`company_id`),
+  KEY `value` (`value`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Review Booster (Module 11)
+CREATE TABLE IF NOT EXISTS `ff_review_boosters` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `project_id` int(11) NOT NULL,
+  `name` varchar(150) NOT NULL,
+  `platform` enum('google','yelp','tripadvisor','trustpilot','facebook','custom') NOT NULL DEFAULT 'google',
+  `review_url` varchar(500) NOT NULL,
+  `min_rating` tinyint(1) NOT NULL DEFAULT 4,
+  `message_template` text DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `requests_sent` int(11) NOT NULL DEFAULT 0,
+  `requests_clicked` int(11) NOT NULL DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `project_id` (`project_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Automations (Module 12)
+CREATE TABLE IF NOT EXISTS `ff_automations` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `project_id` int(11) NOT NULL,
+  `name` varchar(150) NOT NULL,
+  `description` text DEFAULT NULL,
+  `trigger_type` enum('feedback_created','feedback_updated','rating_low','rating_high','keyword_match','daily','weekly') NOT NULL DEFAULT 'feedback_created',
+  `trigger_config` text DEFAULT NULL,
+  `action_type` enum('send_email','send_webhook','create_task','add_tag','change_status','notify_slack','send_sms') NOT NULL DEFAULT 'send_email',
+  `action_config` text DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `run_count` int(11) NOT NULL DEFAULT 0,
+  `last_run_at` datetime DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `project_id` (`project_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Billing Plans (Module 14, 15, 16)
+CREATE TABLE IF NOT EXISTS `ff_billing_plans` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(80) NOT NULL,
+  `slug` varchar(80) NOT NULL UNIQUE,
+  `price_monthly` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `price_yearly` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `currency` varchar(3) NOT NULL DEFAULT 'USD',
+  `max_projects` int(11) NOT NULL DEFAULT 1,
+  `max_team_members` int(11) NOT NULL DEFAULT 1,
+  `max_feedback_per_month` int(11) NOT NULL DEFAULT 100,
+  `max_campaigns_per_month` int(11) NOT NULL DEFAULT 0,
+  `features` text DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `sort_order` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Subscriptions
+CREATE TABLE IF NOT EXISTS `ff_subscriptions` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `company_id` int(11) NOT NULL,
+  `plan_id` int(11) NOT NULL,
+  `status` enum('active','trialing','past_due','cancelled','expired') NOT NULL DEFAULT 'active',
+  `billing_cycle` enum('monthly','yearly') NOT NULL DEFAULT 'monthly',
+  `started_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` datetime DEFAULT NULL,
+  `cancelled_at` datetime DEFAULT NULL,
+  `stripe_subscription_id` varchar(255) DEFAULT NULL,
+  `stripe_customer_id` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `company_id` (`company_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Invoices (Module 17)
+CREATE TABLE IF NOT EXISTS `ff_invoices` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `company_id` int(11) NOT NULL,
+  `subscription_id` int(11) DEFAULT NULL,
+  `invoice_number` varchar(50) NOT NULL UNIQUE,
+  `amount` decimal(10,2) NOT NULL,
+  `tax_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `tax_rate` decimal(5,2) NOT NULL DEFAULT 0.00,
+  `currency` varchar(3) NOT NULL DEFAULT 'USD',
+  `status` enum('draft','sent','paid','void','overdue') NOT NULL DEFAULT 'draft',
+  `due_date` date DEFAULT NULL,
+  `paid_at` datetime DEFAULT NULL,
+  `stripe_payment_intent` varchar(255) DEFAULT NULL,
+  `pdf_path` varchar(255) DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `company_id` (`company_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- API Keys (Module 29)
+CREATE TABLE IF NOT EXISTS `ff_api_keys` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `company_id` int(11) DEFAULT NULL,
+  `user_id` int(11) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `key_hash` varchar(255) NOT NULL UNIQUE,
+  `key_prefix` varchar(12) NOT NULL,
+  `scopes` text DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `last_used_at` datetime DEFAULT NULL,
+  `expires_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Audit Log (Module 26)
+CREATE TABLE IF NOT EXISTS `ff_audit_logs` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `company_id` int(11) DEFAULT NULL,
+  `user_id` int(11) DEFAULT NULL,
+  `user_name` varchar(100) DEFAULT NULL,
+  `user_email` varchar(191) DEFAULT NULL,
+  `action` varchar(100) NOT NULL,
+  `resource_type` varchar(50) DEFAULT NULL,
+  `resource_id` int(11) DEFAULT NULL,
+  `old_values` text DEFAULT NULL,
+  `new_values` text DEFAULT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` varchar(500) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `company_id` (`company_id`),
+  KEY `user_id` (`user_id`),
+  KEY `action` (`action`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Background Jobs (Module 28)
+CREATE TABLE IF NOT EXISTS `ff_jobs` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `type` varchar(80) NOT NULL,
+  `payload` text DEFAULT NULL,
+  `status` enum('pending','running','done','failed') NOT NULL DEFAULT 'pending',
+  `attempts` tinyint(3) NOT NULL DEFAULT 0,
+  `max_attempts` tinyint(3) NOT NULL DEFAULT 3,
+  `available_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `started_at` datetime DEFAULT NULL,
+  `finished_at` datetime DEFAULT NULL,
+  `error` text DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `status` (`status`),
+  KEY `available_at` (`available_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Usage Tracking (Module 14)
+CREATE TABLE IF NOT EXISTS `ff_usage` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `company_id` int(11) NOT NULL,
+  `year_month` varchar(7) NOT NULL,
+  `feedback_count` int(11) NOT NULL DEFAULT 0,
+  `campaign_count` int(11) NOT NULL DEFAULT 0,
+  `api_calls` int(11) NOT NULL DEFAULT 0,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `company_month` (`company_id`,`year_month`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Status Pages (Module 31)
+CREATE TABLE IF NOT EXISTS `ff_status_pages` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `company_id` int(11) DEFAULT NULL,
+  `name` varchar(150) NOT NULL,
+  `slug` varchar(150) NOT NULL UNIQUE,
+  `description` text DEFAULT NULL,
+  `is_public` tinyint(1) NOT NULL DEFAULT 1,
+  `overall_status` enum('operational','degraded','partial_outage','major_outage','maintenance') NOT NULL DEFAULT 'operational',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `ff_status_incidents` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `page_id` int(11) DEFAULT NULL,
+  `title` varchar(255) NOT NULL,
+  `description` text DEFAULT NULL,
+  `severity` enum('minor','major','critical','maintenance') NOT NULL DEFAULT 'minor',
+  `status` enum('investigating','identified','monitoring','resolved') NOT NULL DEFAULT 'investigating',
+  `resolved_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Export Requests (Module 27)
+CREATE TABLE IF NOT EXISTS `ff_export_requests` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `company_id` int(11) DEFAULT NULL,
+  `user_id` int(11) NOT NULL,
+  `type` enum('feedback','campaigns','analytics','full_backup') NOT NULL DEFAULT 'feedback',
+  `filters` text DEFAULT NULL,
+  `status` enum('pending','processing','ready','failed') NOT NULL DEFAULT 'pending',
+  `file_path` varchar(255) DEFAULT NULL,
+  `row_count` int(11) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Email Campaigns (enhanced)
+CREATE TABLE IF NOT EXISTS `ff_campaigns` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `project_id` int(11) NOT NULL,
+  `name` varchar(150) NOT NULL,
+  `subject` varchar(255) NOT NULL,
+  `body` longtext NOT NULL,
+  `from_name` varchar(100) DEFAULT NULL,
+  `from_email` varchar(191) DEFAULT NULL,
+  `reply_to` varchar(191) DEFAULT NULL,
+  `status` enum('draft','scheduled','sending','sent','paused','cancelled') NOT NULL DEFAULT 'draft',
+  `channel` enum('email','sms','whatsapp') NOT NULL DEFAULT 'email',
+  `scheduled_at` datetime DEFAULT NULL,
+  `sent_at` datetime DEFAULT NULL,
+  `recipient_count` int(11) NOT NULL DEFAULT 0,
+  `sent_count` int(11) NOT NULL DEFAULT 0,
+  `open_count` int(11) NOT NULL DEFAULT 0,
+  `click_count` int(11) NOT NULL DEFAULT 0,
+  `bounce_count` int(11) NOT NULL DEFAULT 0,
+  `unsubscribe_count` int(11) NOT NULL DEFAULT 0,
+  `created_by` int(11) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `project_id` (`project_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `ff_campaign_recipients` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `campaign_id` int(11) NOT NULL,
+  `email` varchar(191) DEFAULT NULL,
+  `phone` varchar(50) DEFAULT NULL,
+  `name` varchar(100) DEFAULT NULL,
+  `token` varchar(64) DEFAULT NULL,
+  `status` enum('pending','sent','opened','clicked','bounced','unsubscribed','failed') NOT NULL DEFAULT 'pending',
+  `sent_at` datetime DEFAULT NULL,
+  `opened_at` datetime DEFAULT NULL,
+  `clicked_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `campaign_id` (`campaign_id`),
+  UNIQUE KEY `campaign_email` (`campaign_id`,`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tasks (Module 08 - processing)
+CREATE TABLE IF NOT EXISTS `ff_tasks` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `project_id` int(11) NOT NULL,
+  `feedback_id` int(11) DEFAULT NULL,
+  `title` varchar(255) NOT NULL,
+  `description` text DEFAULT NULL,
+  `status` enum('open','in_progress','done','cancelled') NOT NULL DEFAULT 'open',
+  `priority` enum('critical','high','medium','low') NOT NULL DEFAULT 'medium',
+  `assigned_to` int(11) DEFAULT NULL,
+  `due_date` date DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `project_id` (`project_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Language strings (Module 19)
+CREATE TABLE IF NOT EXISTS `ff_translations` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `lang` varchar(10) NOT NULL,
+  `key` varchar(150) NOT NULL,
+  `value` text NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `lang_key` (`lang`,`key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- QR codes (Module 05)
+CREATE TABLE IF NOT EXISTS `ff_qr_codes` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `project_id` int(11) NOT NULL,
+  `name` varchar(100) NOT NULL DEFAULT 'QR Code',
+  `token` varchar(64) NOT NULL UNIQUE,
+  `scan_count` int(11) NOT NULL DEFAULT 0,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================================
+-- DEFAULT DATA
+-- ============================================================
+
+INSERT IGNORE INTO `ff_billing_plans` (`name`,`slug`,`price_monthly`,`price_yearly`,`max_projects`,`max_team_members`,`max_feedback_per_month`,`max_campaigns_per_month`,`features`,`sort_order`) VALUES
+('Free','free',0.00,0.00,1,2,100,0,'["Feedback inbox","1 project","2 team members","Public roadmap","Changelog"]',1),
+('Starter','starter',29.00,290.00,3,5,1000,2,'["Everything in Free","3 projects","5 team members","Email campaigns","Review booster","AI insights","Webhooks"]',2),
+('Growth','growth',79.00,790.00,10,15,10000,10,'["Everything in Starter","10 projects","15 team members","Automations","Suppression list","Audit logs","API access","Export"]',3),
+('Pro','pro',149.00,1490.00,25,50,50000,50,'["Everything in Growth","25 projects","50 team members","AI copilot","Custom domain","Priority support","White-label option"]',4),
+('Enterprise','enterprise',399.00,3990.00,999,999,999999,999,'["Everything in Pro","Unlimited projects","Unlimited members","SSO","Dedicated support","SLA","Custom contract"]',5);
+
+-- Demo admin user (password: Admin1234!)
+INSERT IGNORE INTO `ff_users` (`id`,`name`,`email`,`password`,`role`,`is_active`,`email_verified`,`is_super_admin`) VALUES
+(1,'Admin User','admin@demo.com','$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi','owner',1,1,1);
+
+-- Demo company
+INSERT IGNORE INTO `ff_companies` (`id`,`name`,`slug`,`email`,`plan`) VALUES
+(1,'Demo Company','demo','admin@demo.com','pro');

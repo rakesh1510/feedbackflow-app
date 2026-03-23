@@ -5,7 +5,7 @@
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'feedbackflow');
 define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_PASS', 'YourStrongPassword123!');
 define('DB_CHARSET', 'utf8mb4');
 
 // App settings
@@ -47,3 +47,18 @@ date_default_timezone_set('UTC');
 
 // Environment
 define('DEBUG_MODE', false);
+
+// Mail alias (same as SMTP_FROM but shorter)
+define('MAIL_FROM', SMTP_FROM);
+define('MAIL_FROM_NAME', SMTP_FROM_NAME);
+
+// Stripe (optional)
+define('STRIPE_SECRET_KEY', '');
+define('STRIPE_PUBLISHABLE_KEY', '');
+define('STRIPE_WEBHOOK_SECRET', '');
+
+// Default language
+define('DEFAULT_LANG', 'en');
+
+// Rate limiting
+define('RATE_LIMIT_ENABLED', true);

@@ -1,252 +1,118 @@
-# FeedbackFlow – Self-Hosted LAMP Feedback Management
+# FeedbackFlow — Complete LAMP Edition (37 Modules)
 
-A comprehensive product feedback management system for your own LAMP server (Linux, Apache, MySQL, PHP 8.0+).
-
-## Features
-
-### Core
-- ✅ Beautiful, responsive admin dashboard
-- ✅ Multi-project support
-- ✅ Fast feedback list with search, filters, sorting, pagination
-- ✅ Embeddable JavaScript widget (drop one `<script>` tag)
-- ✅ Mobile-responsive design
-
-### Feedback Management
-- ✅ Feedback categories (Bug, Feature, Improvement, etc.)
-- ✅ Status tracking (New → Under Review → Planned → In Progress → Done → Declined)
-- ✅ Priority levels (Critical, High, Medium, Low)
-- ✅ Assign to team members
-- ✅ Internal notes (private to team)
-- ✅ Public comments
-- ✅ Tags system
-- ✅ File attachments (images, PDFs, etc.)
-- ✅ User email capture
-- ✅ Public/private feedback mode
-- ✅ Merge duplicate requests
-- ✅ Vote counting + emoji reactions
-
-### AI Features (requires OpenAI API key)
-- ✅ Sentiment analysis (positive/neutral/negative)
-- ✅ AI-generated summary
-- ✅ Priority scoring
-- ✅ Suggested reply drafts
-- ✅ AI tag suggestions
-- ✅ On-demand per-feedback analysis
-
-### Product Tools
-- ✅ Feature voting system (upvote)
-- ✅ Public roadmap (Planned / In Progress / Done)
-- ✅ Public changelog with versioning
-- ✅ Analytics dashboard with charts
-- ✅ Trend over time, status breakdown, category distribution, sentiment charts
-
-### Team & Business
-- ✅ Multi-user accounts with roles (Owner, Admin, Manager, Member, Viewer)
-- ✅ Team invitation system (auto-creates accounts for new users)
-- ✅ Role-based permissions
-- ✅ Multiple projects
-- ✅ CSRF protection on all forms
-
-### Integrations
-- ✅ Slack webhook notifications
-- ✅ Email notifications (SMTP or PHP mail())
-- ✅ Jira configuration
-- ✅ Custom webhooks (with HMAC signature verification)
-- ✅ Zapier-compatible via webhooks
-- ✅ JSON REST API
-
-### Widget
-- ✅ Custom colors, position, theme (light/dark/auto)
-- ✅ Custom title and placeholder text
-- ✅ Tab-based form (Feedback / Bug / Idea)
-- ✅ Emoji reactions
-- ✅ JavaScript API (`FeedbackFlow.open()`, `FeedbackFlow.identify()`)
-- ✅ Anonymous submission support
-- ✅ Rate limiting
-
-### Security
-- ✅ CSRF protection
-- ✅ Rate limiting (DB-backed)
-- ✅ Secure file uploads (extension whitelist)
-- ✅ PHP uploads directory protected from execution
-- ✅ Password hashing (bcrypt)
-- ✅ Session security (HttpOnly, SameSite=Lax)
-- ✅ GDPR data export
+A production-ready multi-tenant SaaS feedback management platform.  
+Stack: **PHP 8+ · MySQL · Apache · Tailwind CSS · Alpine.js · Chart.js**
 
 ---
 
-## Requirements
+## Quick Start
 
-| Requirement | Minimum Version |
-|-------------|----------------|
-| PHP         | 8.0+           |
-| MySQL       | 5.7+ or MariaDB 10.3+ |
-| Apache      | 2.4+ (with mod_rewrite) |
-| PHP Extensions | PDO, PDO_MySQL, cURL, JSON, mbstring |
+### Requirements
+- PHP 8.0+ with `pdo`, `pdo_mysql`, `curl`, `openssl`
+- MySQL 5.7+ or MariaDB 10.3+
+- Apache 2.4+ with `mod_rewrite`
 
----
+### Installation
 
-## Installation
+1. **Upload files** to your server (e.g. `/var/www/html/feedbackflow/`)
 
-### 1. Upload Files
-Upload the `feedbackflow-lamp/` folder to your web server's document root or a subdirectory.
-
-### 2. Create Database
+2. **Create database**
 ```sql
-CREATE DATABASE feedbackflow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'ff_user'@'localhost' IDENTIFIED BY 'strongpassword';
-GRANT ALL PRIVILEGES ON feedbackflow.* TO 'ff_user'@'localhost';
-FLUSH PRIVILEGES;
+CREATE DATABASE feedbackflow CHARACTER SET utf8mb4;
+CREATE USER 'ffuser'@'localhost' IDENTIFIED BY 'yourpassword';
+GRANT ALL PRIVILEGES ON feedbackflow.* TO 'ffuser'@'localhost';
 ```
 
-### 3. Configure
-Edit `config.php`:
+3. **Import schema**
+```bash
+mysql -u ffuser -p feedbackflow < install.sql
+```
+
+4. **Edit `config.php`**
 ```php
-define('DB_HOST', 'localhost');
 define('DB_NAME', 'feedbackflow');
-define('DB_USER', 'ff_user');
-define('DB_PASS', 'strongpassword');
-define('APP_URL', 'https://yourdomain.com/feedbackflow');
-define('SECRET_KEY', 'generate-a-random-64-char-string-here');
+define('DB_USER', 'ffuser');
+define('DB_PASS', 'yourpassword');
+define('APP_URL', 'https://yourdomain.com');
+define('SECRET_KEY', 'your-64-char-random-string');
 ```
 
-### 4. Run Installer
-Visit: `https://yourdomain.com/feedbackflow/install.php`
+5. **Set permissions**
+```bash
+chmod 777 uploads/
+```
 
-The installer will:
-- Check server requirements
-- Run the database schema
-- Create your admin account
-- Seed demo data
+6. **Add cron job** (background jobs)
+```bash
+* * * * * php /var/www/html/feedbackflow/jobs/worker.php
+```
 
-### 5. ⚠️ Delete install.php
-After installation, **delete `install.php`** for security!
+### Login
+- URL: `/admin/`
+- Email: `admin@demo.com`
+- Password: `Admin1234!`
+- **⚠️ Change immediately!**
 
 ---
 
-## Widget Installation
+## All 37 Modules
 
-Add to any page of your website:
-
-```html
-<script src="https://yourdomain.com/feedbackflow/widget/widget.js" 
-        data-key="YOUR_WIDGET_KEY" 
-        defer>
-</script>
-```
-
-Find your widget key in **Admin → Widget** page.
-
-### Advanced Usage
-
-```javascript
-// Open widget programmatically
-FeedbackFlow.open();
-
-// Pre-fill user info (call after page load)
-FeedbackFlow.identify('user@email.com', 'John Doe');
-
-// Open on button click
-<button onclick="FeedbackFlow.open()">Give Feedback</button>
-```
+| Module | Admin Page |
+|--------|-----------|
+| Dashboard & Stats | admin/index.php |
+| Feedback Inbox | admin/feedback.php |
+| Projects | admin/projects.php |
+| Channels & Widget | admin/channels.php, admin/widget.php |
+| Suppression List (07) | admin/suppression.php |
+| Tasks (08) | admin/tasks.php |
+| Analytics (09) | admin/analytics.php |
+| AI Features (10) | admin/ai-insights.php, admin/ai-copilot.php |
+| Review Booster (11) | admin/review-booster.php |
+| Automation Workflows (12) | admin/automations.php |
+| Public Board & Roadmap (13) | public/board.php, admin/roadmap.php |
+| Usage & Limits (14) | admin/billing.php |
+| Pricing Plans (15) | admin/billing.php |
+| Billing & Payments (16) | admin/billing.php |
+| Invoices (17) | admin/billing.php |
+| GDPR / Legal (18) | admin/export.php |
+| Multi-Language (19) | lang/en.php, lang/es.php, lang/fr.php |
+| Timezone (20) | config.php |
+| Security / CSRF (21) | includes/functions.php |
+| Apache Routing (22) | .htaccess |
+| Super Admin (23) | admin/super-admin.php |
+| Reports & Metrics (24) | admin/reports.php |
+| Notifications (25) | admin/notifications.php |
+| Audit Logs (26) | admin/audit-logs.php |
+| Export & Import (27) | admin/export.php |
+| Background Jobs (28) | jobs/worker.php |
+| API Keys (29) | admin/api-keys.php |
+| Webhooks (30) | admin/integrations.php |
+| Status Pages (31) | admin/status.php, public/status.php |
+| Team & Roles | admin/team.php |
+| Changelog | admin/changelog.php |
+| Email Campaigns | admin/email-campaigns.php |
 
 ---
 
-## AI Features Setup
+## Optional Configuration
 
-1. Get an OpenAI API key from https://platform.openai.com
-2. Add to `config.php`:
 ```php
-define('OPENAI_API_KEY', 'sk-your-key-here');
-define('OPENAI_MODEL', 'gpt-4o-mini');
-```
-3. AI features activate automatically — analyze any feedback from its detail page.
+// AI (OpenAI)
+define('OPENAI_API_KEY', 'sk-...');
 
----
+// Stripe Billing
+define('STRIPE_SECRET_KEY', 'sk_live_...');
 
-## Email Setup (SMTP)
-
-```php
+// SMTP Email
 define('SMTP_HOST', 'smtp.gmail.com');
-define('SMTP_PORT', 587);
-define('SMTP_USER', 'yourapp@gmail.com');
-define('SMTP_PASS', 'your-app-password');
-define('SMTP_FROM', 'noreply@yourapp.com');
-define('SMTP_FROM_NAME', 'FeedbackFlow');
+define('SMTP_USER', 'you@gmail.com');
+define('SMTP_PASS', 'app-password');
+
+// Slack
+define('SLACK_WEBHOOK_URL', 'https://hooks.slack.com/...');
 ```
-
----
-
-## Folder Structure
-
-```
-feedbackflow-lamp/
-├── index.php               Login / Register
-├── install.php             Web installer (DELETE after use!)
-├── install.sql             Database schema
-├── config.php              Configuration
-├── .htaccess               Apache security rules
-├── includes/
-│   ├── db.php              PDO database wrapper
-│   ├── auth.php            Authentication
-│   ├── functions.php       Helper functions
-│   ├── header.php          HTML head
-│   ├── footer.php          HTML foot + JS
-│   └── sidebar.php         Admin sidebar
-├── admin/
-│   ├── index.php           Dashboard
-│   ├── feedback.php        Feedback management
-│   ├── analytics.php       Analytics & charts
-│   ├── roadmap.php         Roadmap (kanban)
-│   ├── changelog.php       Changelog
-│   ├── projects.php        Project settings
-│   ├── team.php            Team management
-│   ├── widget.php          Widget configuration
-│   ├── integrations.php    Slack, Jira, webhooks
-│   └── settings.php        Account settings
-├── public/
-│   ├── board.php           Public feedback board
-│   ├── roadmap.php         Public roadmap
-│   └── changelog.php       Public changelog
-├── widget/
-│   ├── widget.js           Embeddable JavaScript widget
-│   ├── config.php          Widget config endpoint
-│   └── submit.php          Widget submission endpoint
-├── api/
-│   ├── feedback.php        REST API
-│   └── vote.php            Vote endpoint
-└── uploads/
-    ├── attachments/        Uploaded feedback files
-    └── avatars/            User avatars
-```
-
----
-
-## REST API
-
-Use your widget key as the API key:
-
-```
-GET /api/feedback.php?key=YOUR_KEY&action=list
-GET /api/feedback.php?key=YOUR_KEY&action=single&id=1
-POST /api/feedback.php (Header: X-API-Key: YOUR_KEY)
-
-POST /api/vote.php
-  Body: feedback_id=1&emoji=👍
-```
-
----
-
-## Public Pages
-
-| Page | URL |
-|------|-----|
-| Feedback Board | `/public/board.php?slug=your-project-slug` |
-| Roadmap | `/public/roadmap.php?slug=your-project-slug` |
-| Changelog | `/public/changelog.php?slug=your-project-slug` |
 
 ---
 
 ## License
-
-MIT License — free to use, modify, and self-host.
+MIT — free to use, modify, and resell.

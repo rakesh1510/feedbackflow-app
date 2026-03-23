@@ -721,3 +721,108 @@ function triggerWebhooks(int $projectId, string $event, array $payload): void {
         DB::query("UPDATE ff_webhooks SET last_triggered = NOW() WHERE id = ?", [$wh['id']]);
     }
 }
+
+/**
+ * Output CSRF hidden input field
+ */
+function csrfInput(): string {
+    return '<input type="hidden" name="_csrf" value="' . htmlspecialchars(csrf(), ENT_QUOTES) . '">';
+}
+
+/**
+ * Log an audit event to ff_audit_logs
+ */
+function logAudit(array $user, string $action, string $resourceType = null, int $resourceId = null, array $oldValues = null, array $newValues = null): void {
+    try {
+        DB::insert('ff_audit_logs', [
+            'user_id'       => $user['id'] ?? null,
+            'user_name'     => $user['name'] ?? null,
+            'user_email'    => $user['email'] ?? null,
+            'action'        => $action,
+            'resource_type' => $resourceType,
+            'resource_id'   => $resourceId,
+            'old_values'    => $oldValues ? json_encode($oldValues) : null,
+            'new_values'    => $newValues ? json_encode($newValues) : null,
+            'ip_address'    => $_SERVER['REMOTE_ADDR'] ?? null,
+            'user_agent'    => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
+        ]);
+    } catch (\Throwable $e) {
+        // Fail silently — audit logging should never break the application
+        if (DEBUG_MODE) error_log("logAudit failed: " . $e->getMessage());
+    }
+}
+
+/**
+ * Translation helper — Module 19 (Multi-Language)
+ */
+function __(string $key, array $replace = [], string $lang = null): string {
+    static $strings = [];
+    $lang = $lang ?? ($_SESSION['lang'] ?? 'en');
+    if (!isset($strings[$lang])) {
+        $file = dirname(__DIR__) . '/lang/' . preg_replace('/[^a-z\-]/', '', $lang) . '.php';
+        $strings[$lang] = file_exists($file) ? (require $file) : [];
+    }
+    $val = $strings[$lang][$key] ?? $strings['en'][$key] ?? $key;
+    foreach ($replace as $k => $v) {
+        $val = str_replace(':' . $k, $v, $val);
+    }
+    return $val;
+}
+
+/**
+ * Dispatch a background job to the ff_jobs queue
+ */
+function dispatchJob(string $type, array $payload = [], int $delaySeconds = 0): int {
+    return DB::insert('ff_jobs', [
+        'type'         => $type,
+        'payload'      => json_encode($payload),
+        'status'       => 'pending',
+        'available_at' => date('Y-m-d H:i:s', time() + $delaySeconds),
+    ]);
+}
+
+/**
+ * Check if an email/phone is in the suppression list
+ */
+function isSuppressed(string $value): bool {
+    return (bool)DB::fetch("SELECT id FROM ff_suppression WHERE value = ? AND 1=1", [$value]);
+}
+
+/**
+ * Get notification count for a user (unread)
+ */
+function getUnreadNotificationCount(int $userId): int {
+    return DB::count("SELECT COUNT(*) FROM ff_notifications WHERE user_id = ? AND is_read = 0", [$userId]);
+}
+
+/**
+ * Create a notification for a user
+ */
+function createNotification(int $userId, string $type, string $message, int $projectId = null, int $feedbackId = null): void {
+    DB::insert('ff_notifications', [
+        'user_id'     => $userId,
+        'project_id'  => $projectId,
+        'feedback_id' => $feedbackId,
+        'type'        => $type,
+        'message'     => $message,
+        'is_read'     => 0,
+    ]);
+}
+
+/**
+ * Increment usage counter for a company
+ */
+function trackUsage(int $companyId, string $metric, int $amount = 1): void {
+    $month = date('Y-m');
+    DB::query("INSERT INTO ff_usage (company_id, year_month, $metric) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE $metric = $metric + ?", [$companyId, $month, $amount, $amount]);
+}
+
+/**
+ * Format bytes to human-readable size
+ */
+function formatBytes(int $bytes): string {
+    $units = ['B', 'KB', 'MB', 'GB'];
+    $i = 0;
+    while ($bytes >= 1024 && $i < 3) { $bytes /= 1024; $i++; }
+    return round($bytes, 1) . ' ' . $units[$i];
+}
