@@ -1,47 +1,85 @@
+<?php
+/**
+ * Public Pricing Page — DB-driven
+ * Reads plans and add-ons directly from ff_billing_plans and ff_addons.
+ */
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/billing.php';
+
+try {
+    $plans        = BillingService::getAllPlans();
+    $addonCatalog = BillingService::getAvailableAddons();
+} catch (\Throwable $e) {
+    $plans        = [];
+    $addonCatalog = [];
+}
+
+// Helper: escape for HTML output
+function h2(string $str): string {
+    return htmlspecialchars($str, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+}
+
+// Comparison matrix rows
+$featureMatrix = [
+    ['label'=>'Projects',              'key'=>'max_projects',            'type'=>'num'],
+    ['label'=>'Team Members',          'key'=>'max_users',               'type'=>'num'],
+    ['label'=>'Feedback / month',      'key'=>'max_feedback_per_month',  'type'=>'num'],
+    ['label'=>'Email campaigns / mo',  'key'=>'max_campaigns_per_month', 'type'=>'num'],
+    ['label'=>'Emails / month',        'key'=>'max_emails',              'type'=>'num'],
+    ['label'=>'WhatsApp / month',      'key'=>'max_whatsapp',            'type'=>'num'],
+    ['label'=>'SMS / month',           'key'=>'max_sms',                 'type'=>'num'],
+    ['label'=>'AI Insights & Copilot', 'key'=>'allow_ai',                'type'=>'bool'],
+    ['label'=>'Automations',           'key'=>'allow_automations',       'type'=>'bool'],
+    ['label'=>'Audit Logs',            'key'=>'allow_audit_logs',        'type'=>'bool'],
+    ['label'=>'API Access',            'key'=>'allow_api',               'type'=>'bool'],
+    ['label'=>'Bulk Export',           'key'=>'allow_export',            'type'=>'bool'],
+    ['label'=>'White-label',           'key'=>'allow_white_label',       'type'=>'bool'],
+    ['label'=>'SSO / SAML',            'key'=>'allow_sso',               'type'=>'bool'],
+];
+
+$planIcons = [
+    'starter'    => 'fa-seedling',
+    'growth'     => 'fa-chart-line',
+    'pro'        => 'fa-rocket',
+    'enterprise' => 'fa-building',
+];
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pricing – FeedbackFlow</title>
+<title>Pricing – <?= APP_NAME ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-  * { font-family: 'Inter', sans-serif; }
-  .gradient-text {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-  }
-  .plan-card { transition: transform .2s ease, box-shadow .2s ease; }
-  .plan-card:hover { transform: translateY(-4px); box-shadow: 0 20px 60px -10px rgba(99,102,241,.18); }
-  .popular-card { transform: scale(1.04); }
-  .popular-card:hover { transform: scale(1.04) translateY(-4px); }
-  .toggle-bg { background: #e5e7eb; transition: background .2s; }
-  .toggle-bg.active { background: #6366f1; }
-  .toggle-knob { transition: transform .2s; }
-  .badge-popular {
-    background: linear-gradient(135deg,#6366f1,#8b5cf6);
-    color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .06em;
-    padding: 3px 12px; border-radius: 99px; text-transform: uppercase;
-  }
-  .check { color: #6366f1; }
-  .cross { color: #d1d5db; }
-  .feature-row:hover { background: #fafafa; }
-  .cta-bg { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%); }
-  .nav-glass { backdrop-filter: blur(12px); background: rgba(255,255,255,.85); }
-  .hero-blob {
-    position: absolute; border-radius: 50%; filter: blur(80px); opacity: .15; pointer-events: none;
-  }
-  .faq-answer { max-height: 0; overflow: hidden; transition: max-height .3s ease; }
-  .faq-answer.open { max-height: 300px; }
-  .faq-icon { transition: transform .3s ease; }
-  .faq-item.open .faq-icon { transform: rotate(45deg); }
+  *{font-family:'Inter',sans-serif;}
+  .gradient-text{background:linear-gradient(135deg,#6366f1,#8b5cf6,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+  .plan-card{transition:transform .2s,box-shadow .2s;}
+  .plan-card:hover{transform:translateY(-4px);box-shadow:0 20px 60px -10px rgba(99,102,241,.18);}
+  .popular-card{transform:scale(1.04);}
+  .popular-card:hover{transform:scale(1.04) translateY(-4px);}
+  .toggle-bg{background:#e5e7eb;transition:background .2s;}
+  .toggle-bg.active{background:#6366f1;}
+  .toggle-knob{transition:transform .2s;}
+  .check{color:#6366f1;}
+  .cross{color:#d1d5db;}
+  .feature-row:hover{background:#fafafa;}
+  .cta-bg{background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 50%,#a855f7 100%);}
+  .nav-glass{backdrop-filter:blur(12px);background:rgba(255,255,255,.85);}
+  .hero-blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.15;pointer-events:none;}
+  .faq-answer{max-height:0;overflow:hidden;transition:max-height .35s ease;}
+  .faq-answer.open{max-height:300px;}
+  .faq-item.open .faq-icon{transform:rotate(45deg);}
+  .faq-icon{transition:transform .3s;}
+  .addon-card:hover{border-color:#818cf8;}
 </style>
 </head>
 <body class="bg-white text-gray-900 antialiased">
 
-<!-- ── Navbar ─────────────────────────────────────────────────────────────── -->
+<!-- ── Navbar ────────────────────────────────────────────────────────────── -->
 <nav class="nav-glass sticky top-0 z-50 border-b border-gray-100">
   <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
     <div class="flex items-center gap-2.5">
@@ -49,27 +87,24 @@
            style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
         <i class="fas fa-comments"></i>
       </div>
-      <span class="font-bold text-gray-900 text-lg tracking-tight">FeedbackFlow</span>
+      <span class="font-bold text-gray-900 text-lg tracking-tight"><?= APP_NAME ?></span>
     </div>
     <div class="hidden md:flex items-center gap-7 text-sm font-medium text-gray-500">
-      <a href="#features" class="hover:text-indigo-600 transition">Features</a>
-      <a href="#pricing" class="hover:text-indigo-600 transition">Pricing</a>
-      <a href="#compare" class="hover:text-indigo-600 transition">Compare</a>
-      <a href="#faq" class="hover:text-indigo-600 transition">FAQ</a>
+      <a href="#pricing"  class="hover:text-indigo-600 transition">Pricing</a>
+      <a href="#addons"   class="hover:text-indigo-600 transition">Add-ons</a>
+      <a href="#compare"  class="hover:text-indigo-600 transition">Compare</a>
+      <a href="#faq"      class="hover:text-indigo-600 transition">FAQ</a>
     </div>
     <div class="flex items-center gap-3">
-      <?php if (defined('APP_URL')): ?>
-      <a href="<?= APP_URL ?>/admin/" class="text-sm font-medium text-gray-600 hover:text-indigo-600 transition">Sign in</a>
-      <a href="<?= APP_URL ?>/install.php" class="text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition">Get Started Free</a>
-      <?php else: ?>
-      <a href="#pricing" class="text-sm font-medium text-gray-600 hover:text-indigo-600 transition">Sign in</a>
-      <a href="#pricing" class="text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition">Get Started Free</a>
-      <?php endif; ?>
+      <a href="<?= APP_URL ?>/admin/"      class="text-sm font-medium text-gray-600 hover:text-indigo-600 transition">Sign in</a>
+      <a href="<?= APP_URL ?>/install.php" class="text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition">
+        Start Free Trial
+      </a>
     </div>
   </div>
 </nav>
 
-<!-- ── Hero ───────────────────────────────────────────────────────────────── -->
+<!-- ── Hero ──────────────────────────────────────────────────────────────── -->
 <section class="relative overflow-hidden pt-20 pb-16 px-6">
   <div class="hero-blob w-96 h-96 bg-indigo-500 top-0 left-1/4"></div>
   <div class="hero-blob w-72 h-72 bg-purple-500 top-12 right-1/4"></div>
@@ -81,10 +116,9 @@
       Simple pricing.<br><span class="gradient-text">Powerful results.</span>
     </h1>
     <p class="text-xl text-gray-500 mb-10 max-w-xl mx-auto leading-relaxed">
-      Start free. Upgrade when you need more power. No hidden fees, no per-seat charges — just one flat price.
+      One flat monthly fee per workspace. No per-seat charges. No hidden fees. Cancel any time.
     </p>
-
-    <!-- Billing Toggle -->
+    <!-- Billing toggle -->
     <div class="inline-flex items-center gap-3 bg-gray-100 px-4 py-2 rounded-full">
       <span id="label-monthly" class="text-sm font-semibold text-gray-900">Monthly</span>
       <button onclick="toggleBilling()" id="toggle-btn"
@@ -92,377 +126,297 @@
         <span id="toggle-knob" class="toggle-knob w-5 h-5 bg-white rounded-full shadow"></span>
       </button>
       <span id="label-annual" class="text-sm font-medium text-gray-400">
-        Annual <span id="save-badge" class="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full ml-1">Save 20%</span>
+        Annual <span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full ml-1">Save 20%</span>
       </span>
     </div>
   </div>
 </section>
 
-<!-- ── Pricing Cards ───────────────────────────────────────────────────────── -->
+<!-- ── Pricing Cards ──────────────────────────────────────────────────────── -->
 <section id="pricing" class="px-6 pb-20">
-  <div class="max-w-7xl mx-auto">
-    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-5 items-start">
-
-      <!-- FREE -->
-      <div class="plan-card bg-white border-2 border-gray-200 rounded-2xl p-6 flex flex-col">
-        <div class="mb-5">
-          <span class="text-2xl mb-2 block">🌱</span>
-          <h3 class="text-base font-bold text-gray-900 mb-1">Free</h3>
-          <p class="text-xs text-gray-400 mb-4">Perfect to get started</p>
-          <div class="flex items-end gap-1">
-            <span class="text-3xl font-black text-gray-900">€0</span>
-            <span class="text-gray-400 text-sm mb-1">/mo</span>
-          </div>
-        </div>
-        <ul class="space-y-2.5 flex-1 mb-6 text-sm">
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> 1 project</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> 50 feedback items</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Basic dashboard</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Public board</li>
-          <li class="flex items-center gap-2 text-gray-300 line-through"><i class="fas fa-times cross w-4"></i> AI Insights</li>
-          <li class="flex items-center gap-2 text-gray-300 line-through"><i class="fas fa-times cross w-4"></i> Campaigns</li>
-          <li class="flex items-center gap-2 text-gray-300 line-through"><i class="fas fa-times cross w-4"></i> Channels</li>
-        </ul>
-        <a href="#" class="block text-center text-sm font-semibold py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600 transition">
-          Get Started Free
-        </a>
-      </div>
-
-      <!-- STARTER -->
-      <div class="plan-card bg-white border-2 border-gray-200 rounded-2xl p-6 flex flex-col">
-        <div class="mb-5">
-          <span class="text-2xl mb-2 block">🚀</span>
-          <h3 class="text-base font-bold text-gray-900 mb-1">Starter</h3>
-          <p class="text-xs text-gray-400 mb-4">For small teams</p>
-          <div class="flex items-end gap-1">
-            <span class="text-3xl font-black text-gray-900" data-monthly="€19" data-annual="€15">€19</span>
-            <span class="text-gray-400 text-sm mb-1">/mo</span>
-          </div>
-          <p id="starter-save" class="text-xs text-green-600 font-medium mt-1 hidden">Billed €180/yr — save €48</p>
-        </div>
-        <ul class="space-y-2.5 flex-1 mb-6 text-sm">
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> 3 projects</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> 500 feedback / mo</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Full dashboard</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Basic AI Insights</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Email campaigns</li>
-          <li class="flex items-center gap-2 text-gray-300 line-through"><i class="fas fa-times cross w-4"></i> AI Copilot</li>
-          <li class="flex items-center gap-2 text-gray-300 line-through"><i class="fas fa-times cross w-4"></i> QR / WhatsApp</li>
-        </ul>
-        <a href="#" class="block text-center text-sm font-semibold py-2.5 rounded-xl border-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition">
-          Start Free Trial
-        </a>
-      </div>
-
-      <!-- GROWTH — POPULAR -->
-      <div class="plan-card popular-card bg-white border-2 border-indigo-500 rounded-2xl p-6 flex flex-col shadow-xl shadow-indigo-100 relative">
-        <div class="absolute -top-4 left-0 right-0 flex justify-center">
-          <span class="badge-popular"><i class="fas fa-fire mr-1"></i>Most Popular</span>
-        </div>
-        <div class="mb-5 mt-2">
-          <span class="text-2xl mb-2 block">💥</span>
-          <h3 class="text-base font-bold text-gray-900 mb-1">Growth</h3>
-          <p class="text-xs text-indigo-500 font-semibold mb-4">Best for growing teams</p>
-          <div class="flex items-end gap-1">
-            <span class="text-3xl font-black text-gray-900" data-monthly="€49" data-annual="€39">€49</span>
-            <span class="text-gray-400 text-sm mb-1">/mo</span>
-          </div>
-          <p id="growth-save" class="text-xs text-green-600 font-medium mt-1 hidden">Billed €468/yr — save €120</p>
-        </div>
-        <ul class="space-y-2.5 flex-1 mb-6 text-sm">
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> 10 projects</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Unlimited feedback</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Full AI Insights</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> <strong>AI Auto-Replies</strong></li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Full Campaigns</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> QR + Embedded form</li>
-          <li class="flex items-center gap-2 text-gray-300 line-through"><i class="fas fa-times cross w-4"></i> AI Copilot</li>
-        </ul>
-        <a href="#" class="block text-center text-sm font-bold py-2.5 rounded-xl text-white transition"
-           style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
-          Start Free Trial
-        </a>
-      </div>
-
-      <!-- PRO -->
-      <div class="plan-card bg-white border-2 border-gray-200 rounded-2xl p-6 flex flex-col">
-        <div class="mb-5">
-          <span class="text-2xl mb-2 block">⚡</span>
-          <h3 class="text-base font-bold text-gray-900 mb-1">Pro</h3>
-          <p class="text-xs text-gray-400 mb-4">For power users</p>
-          <div class="flex items-end gap-1">
-            <span class="text-3xl font-black text-gray-900" data-monthly="€99" data-annual="€79">€99</span>
-            <span class="text-gray-400 text-sm mb-1">/mo</span>
-          </div>
-          <p id="pro-save" class="text-xs text-green-600 font-medium mt-1 hidden">Billed €948/yr — save €240</p>
-        </div>
-        <ul class="space-y-2.5 flex-1 mb-6 text-sm">
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Unlimited projects</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> <strong>AI Copilot</strong></li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> All 8 channels</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Slack + Jira + Email</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Automation</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Release tracking</li>
-          <li class="flex items-center gap-2 text-gray-600"><i class="fas fa-check check w-4"></i> Priority support</li>
-        </ul>
-        <a href="#" class="block text-center text-sm font-semibold py-2.5 rounded-xl border-2 border-gray-800 text-gray-900 hover:bg-gray-900 hover:text-white transition">
-          Start Free Trial
-        </a>
-      </div>
-
-      <!-- ENTERPRISE -->
-      <div class="plan-card bg-gray-900 border-2 border-gray-800 rounded-2xl p-6 flex flex-col">
-        <div class="mb-5">
-          <span class="text-2xl mb-2 block">🏢</span>
-          <h3 class="text-base font-bold text-white mb-1">Enterprise</h3>
-          <p class="text-xs text-gray-400 mb-4">For large organisations</p>
-          <div class="flex items-end gap-1">
-            <span class="text-3xl font-black text-white">€299</span>
-            <span class="text-gray-500 text-sm mb-1">/mo+</span>
-          </div>
-          <p class="text-xs text-gray-500 mt-1">Custom pricing available</p>
-        </div>
-        <ul class="space-y-2.5 flex-1 mb-6 text-sm">
-          <li class="flex items-center gap-2 text-gray-300"><i class="fas fa-check text-purple-400 w-4"></i> Everything in Pro</li>
-          <li class="flex items-center gap-2 text-gray-300"><i class="fas fa-check text-purple-400 w-4"></i> Predictive AI</li>
-          <li class="flex items-center gap-2 text-gray-300"><i class="fas fa-check text-purple-400 w-4"></i> Revenue impact</li>
-          <li class="flex items-center gap-2 text-gray-300"><i class="fas fa-check text-purple-400 w-4"></i> API access</li>
-          <li class="flex items-center gap-2 text-gray-300"><i class="fas fa-check text-purple-400 w-4"></i> Webhooks</li>
-          <li class="flex items-center gap-2 text-gray-300"><i class="fas fa-check text-purple-400 w-4"></i> Custom branding</li>
-          <li class="flex items-center gap-2 text-gray-300"><i class="fas fa-check text-purple-400 w-4"></i> Dedicated support</li>
-        </ul>
-        <a href="mailto:hello@feedbackflow.app" class="block text-center text-sm font-semibold py-2.5 rounded-xl text-gray-900 transition"
-           style="background:linear-gradient(135deg,#a855f7,#8b5cf6)">
-          Contact Sales
-        </a>
-      </div>
-
+  <div class="max-w-6xl mx-auto">
+    <?php if (empty($plans)): ?>
+    <div class="text-center py-16 text-gray-400">
+      <i class="fas fa-database text-4xl mb-4"></i>
+      <p class="text-lg font-medium">No plans found</p>
+      <p class="text-sm mt-2">Run <code class="bg-gray-100 px-2 py-0.5 rounded text-gray-700">db-billing-migration.sql</code> to seed pricing data.</p>
     </div>
-
-    <!-- Trust bar -->
-    <div class="flex flex-wrap items-center justify-center gap-8 mt-12 text-sm text-gray-400">
-      <span class="flex items-center gap-2"><i class="fas fa-lock text-green-500"></i> No credit card required</span>
-      <span class="flex items-center gap-2"><i class="fas fa-rotate-left text-blue-500"></i> 14-day free trial</span>
-      <span class="flex items-center gap-2"><i class="fas fa-server text-indigo-500"></i> Self-hosted — your data</span>
-      <span class="flex items-center gap-2"><i class="fas fa-shield-halved text-purple-500"></i> GDPR compliant</span>
-      <span class="flex items-center gap-2"><i class="fas fa-times-circle text-red-400"></i> Cancel anytime</span>
-    </div>
-  </div>
-</section>
-
-<!-- ── What makes us different ─────────────────────────────────────────────── -->
-<section id="features" class="bg-gray-50 py-20 px-6">
-  <div class="max-w-5xl mx-auto">
-    <div class="text-center mb-14">
-      <h2 class="text-3xl font-black text-gray-900 mb-3">Why teams choose FeedbackFlow</h2>
-      <p class="text-gray-500 max-w-xl mx-auto">We don't just collect feedback. We tell you what to do next.</p>
-    </div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <?php
-      $features = [
-        ['🤖', 'AI That Thinks For You', 'Auto-groups feedback into clusters, detects what\'s trending, and tells you exactly what to fix first.', 'indigo'],
-        ['📊', 'CEO-Level Insights', 'Plain-English insight cards show sentiment shifts, trending issues, and release impact — in seconds.', 'purple'],
-        ['📩', 'Close the Loop', 'AI-generated replies sent to users automatically. One click to reply to hundreds of users at once.', 'blue'],
-        ['🔗', '8 Collection Channels', 'Widget, email, QR, WhatsApp, SMS, embedded form, public board — all flowing into one inbox.', 'violet'],
-        ['📦', '100% Self-Hosted', 'Your data never leaves your server. GDPR compliant by design. No third-party cloud dependency.', 'green'],
-        ['🚀', 'Works in 15 Minutes', 'Upload, configure, install. No Docker, no Node.js, no complex setup. Just PHP and MySQL.', 'amber'],
-      ];
-      foreach ($features as [$icon, $title, $desc, $color]):
-        $colors = ['indigo' => ['bg-indigo-50', 'text-indigo-600'], 'purple' => ['bg-purple-50', 'text-purple-600'], 'blue' => ['bg-blue-50', 'text-blue-600'], 'violet' => ['bg-violet-50', 'text-violet-600'], 'green' => ['bg-green-50', 'text-green-600'], 'amber' => ['bg-amber-50', 'text-amber-600']];
-        [$bg, $tc] = $colors[$color];
+    <?php else: ?>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
+      <?php foreach ($plans as $plan):
+        $monthly  = (float)$plan['price_monthly'];
+        $yearly   = (float)$plan['price_yearly'];
+        $perMoY   = ($yearly > 0) ? (int)round($yearly / 12) : 0;
+        $save     = ($monthly > 0) ? (int)round($monthly * 12 - $yearly) : 0;
+        $isPopular= ($plan['slug'] === 'pro');
+        $isEnt    = ($plan['slug'] === 'enterprise');
+        $color    = $plan['highlight_color'] ?? '#6366f1';
+        $features = json_decode($plan['features'] ?? '[]', true) ?: [];
+        $icon     = $planIcons[$plan['slug']] ?? 'fa-star';
+        $cardCls  = $isPopular ? 'popular-card border-2' : 'plan-card border';
+        $borderSt = $isPopular ? "border-color:{$color}" : 'border-color:#e5e7eb';
       ?>
-      <div class="bg-white rounded-2xl p-6 border border-gray-100 hover:shadow-md transition">
-        <div class="w-12 h-12 <?= $bg ?> rounded-xl flex items-center justify-center text-xl mb-4"><?= $icon ?></div>
-        <h3 class="font-bold text-gray-900 mb-2"><?= $title ?></h3>
-        <p class="text-sm text-gray-500 leading-relaxed"><?= $desc ?></p>
-      </div>
-      <?php endforeach; ?>
-    </div>
-  </div>
-</section>
-
-<!-- ── Full Comparison Table ───────────────────────────────────────────────── -->
-<section id="compare" class="py-20 px-6">
-  <div class="max-w-5xl mx-auto">
-    <div class="text-center mb-12">
-      <h2 class="text-3xl font-black text-gray-900 mb-3">Full Feature Comparison</h2>
-      <p class="text-gray-500">See exactly what's included in each plan.</p>
-    </div>
-
-    <div class="rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-      <!-- Table header -->
-      <div class="grid grid-cols-6 bg-gray-50 border-b border-gray-200">
-        <div class="col-span-2 px-6 py-4 text-sm font-semibold text-gray-500">Feature</div>
-        <?php foreach ([['Free','€0','gray'],['Starter','€19','blue'],['Growth','€49','indigo'],['Pro','€99','violet'],['Enterprise','€299+','purple']] as [$p,$pr,$c]): ?>
-        <div class="px-3 py-4 text-center">
-          <p class="text-xs font-bold text-<?= $c ?>-600"><?= $p ?></p>
-          <p class="text-xs text-gray-400 mt-0.5"><?= $pr ?>/mo</p>
+      <div class="<?= $cardCls ?> bg-white rounded-2xl p-7 flex flex-col relative" style="<?= $borderSt ?>">
+        <?php if ($isPopular): ?>
+        <div class="absolute -top-3.5 left-1/2 -translate-x-1/2">
+          <span class="text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-sm"
+                style="background:linear-gradient(135deg,<?= $color ?>,<?= $color ?>cc)">Most Popular</span>
         </div>
-        <?php endforeach; ?>
-      </div>
+        <?php endif; ?>
 
-      <?php
-      $sections = [
-        'Core' => [
-          ['Dashboard',         ['Basic','Full','Full','Full','Full']],
-          ['Feedback Inbox',    ['✅','✅','✅','✅','✅']],
-          ['Public Board',      ['✅','✅','✅','✅','✅']],
-          ['Projects',          ['1','3','10','Unlimited','Unlimited']],
-          ['Feedback / month',  ['50','500','Unlimited','Unlimited','Unlimited']],
-          ['Team members',      ['1','3','10','Unlimited','Unlimited']],
-        ],
-        'AI Features' => [
-          ['AI Insights',       ['❌','Basic','Full','Advanced','Advanced +']],
-          ['AI Auto-Replies',   ['❌','❌','✅','✅','✅']],
-          ['AI Copilot',        ['❌','❌','❌','✅','✅']],
-          ['Predictive AI',     ['❌','❌','❌','❌','✅']],
-          ['Revenue Impact',    ['❌','❌','❌','❌','✅']],
-        ],
-        'Channels & Campaigns' => [
-          ['Email Campaigns',   ['❌','Basic','Full','Full','Full']],
-          ['Website Widget',    ['✅','✅','✅','✅','✅']],
-          ['QR Code',           ['❌','❌','Limited','✅','✅']],
-          ['Embedded Form',     ['❌','❌','Limited','✅','✅']],
-          ['WhatsApp / SMS',    ['❌','❌','❌','✅','✅']],
-        ],
-        'Integrations & Automation' => [
-          ['Slack / Jira',      ['❌','❌','❌','✅','✅']],
-          ['Webhooks',          ['❌','❌','❌','❌','✅']],
-          ['API Access',        ['❌','❌','❌','❌','✅']],
-          ['Automation',        ['❌','❌','Basic','Full','Full']],
-        ],
-        'Roadmap & Analytics' => [
-          ['Analytics',         ['Basic','Basic','Full','Full','Full']],
-          ['Roadmap',           ['✅','✅','✅','✅','✅']],
-          ['Changelog',         ['✅','✅','✅','✅','✅']],
-          ['Release Impact',    ['❌','❌','✅','✅','✅']],
-        ],
-        'Support & Compliance' => [
-          ['Email Support',     ['❌','✅','✅','✅','✅']],
-          ['Priority Support',  ['❌','❌','❌','✅','✅']],
-          ['Dedicated Manager', ['❌','❌','❌','❌','✅']],
-          ['Custom Branding',   ['❌','❌','❌','❌','✅']],
-          ['GDPR Compliance',   ['✅','✅','✅','✅','✅']],
-        ],
-      ];
-      $odd = false;
-      foreach ($sections as $section => $rows):
-      ?>
-      <!-- Section label -->
-      <div class="grid grid-cols-6 bg-indigo-50 border-y border-indigo-100">
-        <div class="col-span-6 px-6 py-2.5 text-xs font-bold text-indigo-700 uppercase tracking-wider"><?= $section ?></div>
-      </div>
-      <?php foreach ($rows as [$label, $vals]):
-        $odd = !$odd;
-        $bg = $odd ? 'bg-white' : 'bg-gray-50/50';
-      ?>
-      <div class="feature-row grid grid-cols-6 border-b border-gray-100 <?= $bg ?>">
-        <div class="col-span-2 px-6 py-3 text-sm text-gray-700 flex items-center"><?= $label ?></div>
-        <?php foreach ($vals as $i => $val):
-          $isPopular = $i === 2; // Growth
-          $isCheck   = $val === '✅';
-          $isCross   = $val === '❌';
-        ?>
-        <div class="px-3 py-3 text-center flex items-center justify-center">
-          <?php if ($isCheck): ?>
-            <i class="fas fa-check-circle text-indigo-500 text-base"></i>
-          <?php elseif ($isCross): ?>
-            <i class="fas fa-times-circle text-gray-200 text-base"></i>
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
+             style="background:<?= $color ?>18">
+          <i class="fas <?= $icon ?> text-sm" style="color:<?= $color ?>"></i>
+        </div>
+
+        <h3 class="text-lg font-bold text-gray-900 mb-1"><?= h2($plan['name']) ?></h3>
+        <p class="text-xs text-gray-500 mb-5 leading-relaxed"><?= h2($plan['description'] ?? '') ?></p>
+
+        <!-- Price -->
+        <div class="mb-5">
+          <?php if ($isEnt): ?>
+            <span class="text-3xl font-black text-gray-900">€<?= number_format($monthly, 0) ?>+</span>
+            <span class="text-gray-400 text-sm">/mo</span>
+            <p class="text-xs text-gray-400 mt-1">Billed monthly or yearly · custom contracts available</p>
           <?php else: ?>
-            <span class="text-xs font-semibold <?= $isPopular ? 'text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full' : 'text-gray-600' ?>"><?= $val ?></span>
+            <div>
+              <span class="price-monthly-<?= h2($plan['slug']) ?> text-4xl font-black text-gray-900">€<?= number_format($monthly, 0) ?></span>
+              <span class="price-monthly-label-<?= h2($plan['slug']) ?> text-gray-400 text-sm">/mo</span>
+              <span class="price-yearly-<?= h2($plan['slug']) ?> hidden text-4xl font-black text-gray-900">€<?= $perMoY ?></span>
+              <span class="price-yearly-label-<?= h2($plan['slug']) ?> hidden text-gray-400 text-sm">/mo</span>
+            </div>
+            <?php if ($yearly > 0 && $save > 0): ?>
+            <p class="price-yearly-note-<?= h2($plan['slug']) ?> hidden text-xs text-green-600 font-semibold mt-1">
+              €<?= number_format($yearly, 0) ?>/yr · you save €<?= number_format($save, 0) ?>
+            </p>
+            <?php endif; ?>
           <?php endif; ?>
         </div>
-        <?php endforeach; ?>
-      </div>
-      <?php endforeach; endforeach; ?>
 
-      <!-- CTA Row -->
-      <div class="grid grid-cols-6 bg-gray-50 py-4">
-        <div class="col-span-2 px-6 flex items-center text-sm font-semibold text-gray-700">Get started today</div>
-        <?php foreach ([['Free','border-gray-200 text-gray-600 hover:border-indigo-300'],['€19/mo','border-blue-200 text-blue-600 hover:bg-blue-50'],['€49/mo','bg-indigo-600 text-white hover:bg-indigo-700'],['€99/mo','border-gray-800 text-gray-900 hover:bg-gray-900 hover:text-white'],['Contact','bg-gray-900 text-white hover:bg-gray-700']] as [$label, $cls]): ?>
-        <div class="px-2 py-1 flex items-center justify-center">
-          <a href="#" class="text-xs font-bold px-3 py-2 rounded-xl border-2 transition <?= $cls ?>"><?= $label ?></a>
+        <!-- Quick stats -->
+        <?php
+          $statItems = [
+            ['v'=>$plan['max_projects'],           'l'=>'Projects'],
+            ['v'=>$plan['max_users'],              'l'=>'Users'],
+            ['v'=>$plan['max_feedback_per_month'], 'l'=>'Feedback/mo'],
+          ];
+        ?>
+        <div class="flex gap-4 mb-5">
+          <?php foreach($statItems as $st):
+            $v = ((int)$st['v'] === -1) ? '∞' : (((int)$st['v'] >= 1000) ? number_format((int)$st['v']/1000,0).'k' : (string)(int)$st['v']);
+          ?>
+          <div class="text-center">
+            <div class="text-base font-bold" style="color:<?= $color ?>"><?= $v ?></div>
+            <div class="text-xs text-gray-400 leading-tight"><?= $st['l'] ?></div>
+          </div>
+          <?php endforeach; ?>
         </div>
-        <?php endforeach; ?>
+
+        <!-- Features -->
+        <ul class="space-y-2.5 flex-1 mb-6 text-sm">
+          <?php foreach (array_slice($features, 0, 8) as $feat): ?>
+          <li class="flex items-start gap-2 text-gray-600">
+            <i class="fas fa-check mt-0.5 flex-shrink-0 text-xs" style="color:<?= $color ?>"></i>
+            <?= htmlspecialchars($feat) ?>
+          </li>
+          <?php endforeach; ?>
+        </ul>
+
+        <!-- CTA -->
+        <?php if ($isEnt): ?>
+        <a href="mailto:sales@feedbackflow.app?subject=Enterprise%20plan%20enquiry"
+           class="block w-full text-center py-3 rounded-xl text-sm font-bold text-white transition"
+           style="background:<?= $color ?>">
+          Contact Sales <i class="fas fa-arrow-right ml-1"></i>
+        </a>
+        <?php else: ?>
+        <a href="<?= APP_URL ?>/install.php"
+           class="block w-full text-center py-3 rounded-xl text-sm font-bold transition <?= $isPopular ? 'text-white shadow-md' : '' ?>"
+           style="<?= $isPopular ? "background:{$color}" : "border:2px solid {$color};color:{$color}" ?>">
+          Start Free 14-day Trial
+        </a>
+        <p class="text-xs text-center text-gray-400 mt-2">No credit card · Cancel anytime</p>
+        <?php endif; ?>
       </div>
+      <?php endforeach; ?>
     </div>
+    <?php endif; ?>
   </div>
 </section>
 
-<!-- ── Social Proof ────────────────────────────────────────────────────────── -->
-<section class="bg-gray-50 py-20 px-6">
+<!-- ── Add-ons ────────────────────────────────────────────────────────────── -->
+<?php if (!empty($addonCatalog)): ?>
+<section id="addons" class="bg-gray-50 py-20 px-6">
   <div class="max-w-5xl mx-auto">
     <div class="text-center mb-12">
-      <h2 class="text-3xl font-black text-gray-900 mb-3">Loved by product teams</h2>
+      <h2 class="text-3xl font-bold text-gray-900 mb-3">Extend with Add-ons</h2>
+      <p class="text-gray-500 max-w-xl mx-auto">
+        Need more capacity without switching plans? Buy exactly what you need and pay only for what you use.
+      </p>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <?php
-      $testimonials = [
-        ['Sarah K.', 'Head of Product, TechCorp', 'The AI Insights saved us 5 hours a week. We used to manually read through feedback — now we just open the insights page.', '⭐⭐⭐⭐⭐'],
-        ['Marcus L.', 'Founder, SaaSBase', 'We deployed it in 15 minutes on our server. The QR code channel alone brought in 3x more feedback from our events.', '⭐⭐⭐⭐⭐'],
-        ['Priya M.', 'CTO, Growthly', 'The self-hosted model was non-negotiable for us — GDPR and all. AI Copilot clustering is genuinely impressive.', '⭐⭐⭐⭐⭐'],
-      ];
-      foreach ($testimonials as [$name, $role, $quote, $stars]):
-      ?>
-      <div class="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-        <p class="text-sm mb-1"><?= $stars ?></p>
-        <p class="text-gray-700 text-sm leading-relaxed mb-5">"<?= $quote ?>"</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      <?php foreach ($addonCatalog as $addon): ?>
+      <div class="addon-card bg-white rounded-2xl border border-gray-200 p-5 flex items-start gap-4 transition">
+        <div class="w-11 h-11 bg-indigo-50 rounded-xl flex items-center justify-center flex-shrink-0">
+          <i class="fas <?= h2($addon['icon']) ?> text-indigo-600"></i>
+        </div>
         <div>
-          <p class="font-bold text-gray-900 text-sm"><?= $name ?></p>
-          <p class="text-xs text-gray-400"><?= $role ?></p>
+          <p class="font-semibold text-gray-900 mb-1"><?= h2($addon['name']) ?></p>
+          <p class="text-xs text-gray-500 mb-2.5 leading-relaxed"><?= h2($addon['description']) ?></p>
+          <div class="flex items-center flex-wrap gap-2">
+            <span class="text-sm font-bold text-indigo-700">€<?= number_format((float)$addon['price_per_qty'], 2) ?>/slot/mo</span>
+            <?php if ($addon['type'] === 'quantity'): ?>
+            <span class="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+              +<?= number_format((int)$addon['units_per_qty']) ?> <?= h2($addon['unit_label']) ?>
+            </span>
+            <?php else: ?>
+            <span class="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">Feature unlock</span>
+            <?php endif; ?>
+          </div>
         </div>
       </div>
       <?php endforeach; ?>
     </div>
+    <p class="text-center text-sm text-gray-400 mt-8">
+      Add-ons are activated instantly from your billing dashboard · Remove any time · No lock-in
+    </p>
+  </div>
+</section>
+<?php endif; ?>
+
+<!-- ── Comparison Table ───────────────────────────────────────────────────── -->
+<section id="compare" class="py-20 px-6">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl font-bold text-gray-900 mb-3">Compare All Plans</h2>
+      <p class="text-gray-500">Everything you need to choose with confidence</p>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-200 overflow-x-auto shadow-sm">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-100">
+            <th class="text-left px-6 py-4 text-xs font-semibold text-gray-500 w-52">Feature</th>
+            <?php foreach ($plans as $plan): ?>
+            <th class="px-4 py-4 text-center">
+              <span class="block text-sm font-bold text-gray-900"><?= h2($plan['name']) ?></span>
+              <?php $m = (float)$plan['price_monthly']; ?>
+              <span class="block text-xs font-normal text-gray-400 mt-0.5">
+                <?= ($plan['slug']==='enterprise') ? 'Custom' : (($m===0.0) ? 'Free' : '€'.number_format($m,0).'/mo') ?>
+              </span>
+            </th>
+            <?php endforeach; ?>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($featureMatrix as $row): ?>
+          <tr class="feature-row border-b border-gray-50">
+            <td class="px-6 py-3.5 font-medium text-gray-700 text-xs"><?= h2($row['label']) ?></td>
+            <?php foreach ($plans as $plan):
+              $val = $plan[$row['key']] ?? null;
+            ?>
+            <td class="px-4 py-3.5 text-center text-xs">
+              <?php if ($row['type'] === 'bool'):
+                $on = ((int)$val === 1 || (int)$val === -1);
+              ?>
+                <?php if ($on): ?>
+                <i class="fas fa-check check text-base"></i>
+                <?php else: ?>
+                <i class="fas fa-xmark cross text-base"></i>
+                <?php endif; ?>
+              <?php else:
+                if ((int)$val === -1): ?>
+                <i class="fas fa-infinity text-indigo-400"></i>
+                <?php else: ?>
+                <span class="font-medium text-gray-700"><?= number_format((int)($val ?? 0)) ?></span>
+                <?php endif; ?>
+              <?php endif; ?>
+            </td>
+            <?php endforeach; ?>
+          </tr>
+          <?php endforeach; ?>
+          <tr>
+            <td class="px-6 py-5"></td>
+            <?php foreach ($plans as $plan):
+              $color = $plan['highlight_color'] ?? '#6366f1';
+            ?>
+            <td class="px-4 py-5 text-center">
+              <?php if ($plan['slug']==='enterprise'): ?>
+              <a href="mailto:sales@feedbackflow.app"
+                 class="inline-block text-xs font-bold px-4 py-2 rounded-xl text-white"
+                 style="background:<?= $color ?>">Contact</a>
+              <?php else: ?>
+              <a href="<?= APP_URL ?>/install.php"
+                 class="inline-block text-xs font-bold px-4 py-2 rounded-xl text-white"
+                 style="background:<?= $color ?>">Get Started</a>
+              <?php endif; ?>
+            </td>
+            <?php endforeach; ?>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
 
-<!-- ── FAQ ────────────────────────────────────────────────────────────────── -->
-<section id="faq" class="py-20 px-6">
-  <div class="max-w-2xl mx-auto">
+<!-- ── FAQ ───────────────────────────────────────────────────────────────── -->
+<section id="faq" class="bg-gray-50 py-20 px-6">
+  <div class="max-w-3xl mx-auto">
     <div class="text-center mb-12">
-      <h2 class="text-3xl font-black text-gray-900 mb-3">Frequently asked questions</h2>
+      <h2 class="text-3xl font-bold text-gray-900 mb-3">Frequently Asked Questions</h2>
     </div>
     <?php
     $faqs = [
-      ['Do I need a credit card to start?', 'No. The Free plan is completely free with no credit card required. You can upgrade at any time.'],
-      ['What does self-hosted mean?', 'You download the files, upload them to your own server (shared hosting, VPS, or dedicated), and run the app on your own infrastructure. Your data never touches our servers.'],
-      ['Can I try Pro features before buying?', 'Yes — every paid plan comes with a 14-day free trial. You can test all features and only get charged after the trial period.'],
-      ['What happens if I exceed my feedback limit on Free?', 'New feedback submissions will be paused until you upgrade. Existing data is never deleted.'],
-      ['Do I need an OpenAI API key for AI features?', 'No. AI Insights and AI Copilot work without an OpenAI key using our built-in Smart Rules engine. Adding your own OpenAI key unlocks GPT-powered analysis for more accurate results.'],
-      ['Can I switch plans at any time?', 'Yes, you can upgrade or downgrade at any time. Upgrades take effect immediately, downgrades take effect at the end of your billing period.'],
-      ['Is there a lifetime deal available?', 'Contact us at enterprise pricing for lifetime license options — popular for agencies managing multiple client installations.'],
+      ['q'=>'Can I change plans at any time?',
+       'a'=>'Yes — upgrade or downgrade instantly from your billing dashboard. Upgrades apply immediately; downgrades take effect at the end of your billing period.'],
+      ['q'=>'Do you charge per seat / per user?',
+       'a'=>'No. All plans are flat-rate per workspace. Your plan\'s user limit is the number of team members you can invite — no extra per-seat charge on top.'],
+      ['q'=>'What happens when I hit a limit?',
+       'a'=>'You\'ll receive an in-app warning at 80% of any limit. When you reach the limit the affected feature pauses — we never automatically charge overage fees.'],
+      ['q'=>'Are there setup fees or overage charges?',
+       'a'=>'None. No setup fees, no hidden overage billing. If you exceed a limit, buy an add-on or upgrade to restore capacity.'],
+      ['q'=>'Do you support VAT and EU invoicing?',
+       'a'=>'Yes. Enter your VAT number and billing address in billing settings. Invoices are auto-generated with the correct tax breakdown per billing cycle.'],
+      ['q'=>'What currency is used?',
+       'a'=>'All prices are in Euros (€). If you need invoices in a different currency, contact us at billing@feedbackflow.app.'],
+      ['q'=>'Is FeedbackFlow self-hosted?',
+       'a'=>'Yes — it\'s a self-hosted LAMP application (PHP 8.2 + MySQL). Deploy on any VPS or shared host. Your data stays on your own server.'],
+      ['q'=>'Is there a free trial?',
+       'a'=>'Every paid plan comes with a 14-day free trial. No credit card required to start. Cancel any time during the trial at no charge.'],
     ];
-    foreach ($faqs as $i => [$q, $a]):
     ?>
-    <div class="faq-item border-b border-gray-100 py-5" id="faq-<?= $i ?>">
-      <button onclick="toggleFaq(<?= $i ?>)" class="w-full flex items-center justify-between text-left gap-4 focus:outline-none">
-        <span class="font-semibold text-gray-900 text-sm"><?= $q ?></span>
-        <i class="faq-icon fas fa-plus text-indigo-500 flex-shrink-0"></i>
-      </button>
-      <div class="faq-answer" id="faq-answer-<?= $i ?>">
-        <p class="text-sm text-gray-500 leading-relaxed pt-3 pb-1"><?= $a ?></p>
+    <div class="space-y-3">
+      <?php foreach ($faqs as $i => $faq): ?>
+      <div id="faq-<?= $i ?>" class="faq-item bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <button onclick="toggleFaq(<?= $i ?>)"
+                class="w-full flex items-center justify-between px-6 py-4 text-left font-semibold text-sm text-gray-900 hover:bg-gray-50 transition">
+          <span><?= h2($faq['q']) ?></span>
+          <i class="faq-icon fas fa-plus text-gray-400 flex-shrink-0 ml-4"></i>
+        </button>
+        <div id="faq-answer-<?= $i ?>" class="faq-answer">
+          <p class="px-6 pb-5 text-sm text-gray-600 leading-relaxed"><?= h2($faq['a']) ?></p>
+        </div>
       </div>
+      <?php endforeach; ?>
     </div>
-    <?php endforeach; ?>
   </div>
 </section>
 
-<!-- ── Final CTA ───────────────────────────────────────────────────────────── -->
-<section class="py-20 px-6">
-  <div class="max-w-2xl mx-auto cta-bg rounded-3xl p-12 text-center shadow-2xl shadow-indigo-200">
-    <p class="text-indigo-200 text-sm font-semibold uppercase tracking-widest mb-3">Start today</p>
-    <h2 class="text-3xl font-black text-white mb-4">Your users are talking.<br>Are you listening?</h2>
-    <p class="text-indigo-200 mb-8 text-lg">Join 500+ product teams using FeedbackFlow to build better products, faster.</p>
+<!-- ── CTA ───────────────────────────────────────────────────────────────── -->
+<section class="cta-bg py-20 px-6 text-white text-center">
+  <div class="max-w-2xl mx-auto">
+    <h2 class="text-3xl font-black mb-4">Ready to get started?</h2>
+    <p class="text-indigo-200 mb-8 text-lg">Join 500+ product teams using <?= APP_NAME ?> to build better products, faster.</p>
     <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-      <a href="#pricing" class="inline-flex items-center gap-2 bg-white text-indigo-700 font-bold px-7 py-3.5 rounded-xl hover:bg-indigo-50 transition text-sm">
-        <i class="fas fa-rocket"></i> Start Free — No Card Needed
+      <a href="<?= APP_URL ?>/install.php"
+         class="inline-flex items-center gap-2 bg-white text-indigo-700 font-bold px-7 py-3.5 rounded-xl hover:bg-indigo-50 transition text-sm">
+        <i class="fas fa-rocket"></i> Start Free Trial — No Card Needed
       </a>
-      <a href="mailto:hello@feedbackflow.app" class="inline-flex items-center gap-2 text-white border-2 border-white/30 font-semibold px-7 py-3.5 rounded-xl hover:bg-white/10 transition text-sm">
+      <a href="mailto:hello@feedbackflow.app"
+         class="inline-flex items-center gap-2 text-white border-2 border-white/30 font-semibold px-7 py-3.5 rounded-xl hover:bg-white/10 transition text-sm">
         <i class="fas fa-comments"></i> Talk to Sales
       </a>
     </div>
-    <p class="text-indigo-300 text-xs mt-6">14-day free trial · No contracts · Cancel anytime</p>
+    <p class="text-indigo-300 text-xs mt-6">14-day free trial · No contracts · Cancel anytime · Self-hosted on your server</p>
   </div>
 </section>
 
@@ -472,82 +426,81 @@
     <div class="flex flex-col md:flex-row items-start justify-between gap-8 mb-10">
       <div>
         <div class="flex items-center gap-2.5 mb-3">
-          <div class="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-bold" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
+          <div class="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-bold"
+               style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
             <i class="fas fa-comments"></i>
           </div>
-          <span class="font-bold text-white text-lg tracking-tight">FeedbackFlow</span>
+          <span class="font-bold text-white text-lg tracking-tight"><?= APP_NAME ?></span>
         </div>
-        <p class="text-sm text-gray-400 max-w-xs leading-relaxed">Self-hosted product feedback management. Collect, analyse, and act on user feedback — on your own server.</p>
+        <p class="text-sm text-gray-400 max-w-xs leading-relaxed">
+          Self-hosted product feedback management. Collect, analyse, and act on user feedback — on your own server.
+        </p>
       </div>
       <div class="grid grid-cols-2 gap-x-16 gap-y-2 text-sm text-gray-400">
-        <a href="#features" class="hover:text-white transition">Features</a>
-        <a href="#pricing" class="hover:text-white transition">Pricing</a>
-        <a href="#compare" class="hover:text-white transition">Compare Plans</a>
-        <a href="#faq" class="hover:text-white transition">FAQ</a>
+        <a href="#pricing"  class="hover:text-white transition">Pricing</a>
+        <a href="#addons"   class="hover:text-white transition">Add-ons</a>
+        <a href="#compare"  class="hover:text-white transition">Compare Plans</a>
+        <a href="#faq"      class="hover:text-white transition">FAQ</a>
         <a href="docs/user-guide.md" class="hover:text-white transition">Documentation</a>
         <a href="mailto:hello@feedbackflow.app" class="hover:text-white transition">Contact</a>
       </div>
     </div>
     <div class="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500">
-      <p>© <?= date('Y') ?> FeedbackFlow. All rights reserved.</p>
+      <p>© <?= date('Y') ?> <?= APP_NAME ?>. All rights reserved.</p>
       <div class="flex items-center gap-4">
         <span class="flex items-center gap-1.5"><i class="fas fa-shield-halved text-green-500"></i> GDPR Compliant</span>
         <span class="flex items-center gap-1.5"><i class="fas fa-server text-indigo-400"></i> Self-Hosted</span>
+        <span class="flex items-center gap-1.5"><i class="fas fa-euro-sign text-yellow-400"></i> EUR Pricing</span>
       </div>
     </div>
   </div>
 </footer>
 
-<!-- ── JS ─────────────────────────────────────────────────────────────────── -->
 <script>
 let isAnnual = false;
+const planSlugs = <?= json_encode(array_column($plans, 'slug')) ?>;
 
 function toggleBilling() {
   isAnnual = !isAnnual;
-  const btn   = document.getElementById('toggle-btn');
-  const knob  = document.getElementById('toggle-knob');
-  const lbM   = document.getElementById('label-monthly');
-  const lbA   = document.getElementById('label-annual');
+  const btn  = document.getElementById('toggle-btn');
+  const knob = document.getElementById('toggle-knob');
+  const lbM  = document.getElementById('label-monthly');
+  const lbA  = document.getElementById('label-annual');
 
   btn.classList.toggle('active', isAnnual);
   knob.style.transform = isAnnual ? 'translateX(20px)' : 'translateX(0)';
   lbM.classList.toggle('text-gray-900', !isAnnual);
-  lbM.classList.toggle('text-gray-400', isAnnual);
-  lbA.classList.toggle('text-gray-900', isAnnual);
+  lbM.classList.toggle('text-gray-400',  isAnnual);
+  lbA.classList.toggle('text-gray-900',  isAnnual);
   lbA.classList.toggle('text-gray-400', !isAnnual);
 
-  // Update prices
-  document.querySelectorAll('[data-monthly]').forEach(el => {
-    el.textContent = isAnnual ? el.dataset.annual : el.dataset.monthly;
-  });
-
-  // Show/hide savings text
-  ['starter', 'growth', 'pro'].forEach(id => {
-    const el = document.getElementById(id + '-save');
-    if (el) el.classList.toggle('hidden', !isAnnual);
+  planSlugs.forEach(slug => {
+    const mEl  = document.querySelector('.price-monthly-'      + slug);
+    const mLbl = document.querySelector('.price-monthly-label-'+ slug);
+    const yEl  = document.querySelector('.price-yearly-'       + slug);
+    const yLbl = document.querySelector('.price-yearly-label-' + slug);
+    const yNote= document.querySelector('.price-yearly-note-'  + slug);
+    if (mEl)  mEl.classList.toggle ('hidden', isAnnual);
+    if (mLbl) mLbl.classList.toggle('hidden', isAnnual);
+    if (yEl)  yEl.classList.toggle ('hidden', !isAnnual);
+    if (yLbl) yLbl.classList.toggle('hidden', !isAnnual);
+    if (yNote)yNote.classList.toggle('hidden', !isAnnual);
   });
 }
 
 function toggleFaq(i) {
-  const item   = document.getElementById('faq-' + i);
+  const item   = document.getElementById('faq-'        + i);
   const answer = document.getElementById('faq-answer-' + i);
   const isOpen = item.classList.contains('open');
-
-  // Close all
   document.querySelectorAll('.faq-item').forEach(el => el.classList.remove('open'));
   document.querySelectorAll('.faq-answer').forEach(el => el.classList.remove('open'));
-
-  if (!isOpen) {
-    item.classList.add('open');
-    answer.classList.add('open');
-  }
+  if (!isOpen) { item.classList.add('open'); answer.classList.add('open'); }
 }
 
-// Smooth scroll
 document.querySelectorAll('a[href^="#"]').forEach(a => {
   a.addEventListener('click', e => {
     const target = document.querySelector(a.getAttribute('href'));
-    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (target) { e.preventDefault(); target.scrollIntoView({behavior:'smooth', block:'start'}); }
   });
 });
 </script>

@@ -3,6 +3,8 @@ require_once dirname(__DIR__) . '/config.php';
 require_once dirname(__DIR__) . '/includes/db.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/includes/billing.php';
+require_once dirname(__DIR__) . '/includes/limit-check.php';
 
 $currentUser = Auth::require();
 $userProjects = getUserProjects($currentUser['id']);
@@ -19,6 +21,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = trim($_POST['email'] ?? '');
         $role = $_POST['role'] ?? 'member';
         if (!isValidEmail($email)) { flash('error','Invalid email.'); redirect($_SERVER['REQUEST_URI']); }
+        // ── Limit check: max_users ────────────────────────────────────
+        $__co = BillingService::getCompany($currentUser['id']);
+        $__cid = $__co ? (int)$__co['id'] : (int)$currentUser['id'];
+        $__memberCount = DB::count("SELECT COUNT(*) FROM ff_users WHERE company_id = ? AND is_active = 1", [$__cid]);
+        LimitCheck::gateNumeric($__cid, 'max_users', $__memberCount, 'team member', true, APP_URL . '/admin/billing.php');
+        // ─────────────────────────────────────────────────────────────
         $inviteUser = DB::fetch("SELECT * FROM ff_users WHERE email = ?", [$email]);
         if (!$inviteUser) {
             // Create placeholder account and send invite

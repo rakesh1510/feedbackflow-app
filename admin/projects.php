@@ -3,6 +3,8 @@ require_once dirname(__DIR__) . '/config.php';
 require_once dirname(__DIR__) . '/includes/db.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/includes/billing.php';
+require_once dirname(__DIR__) . '/includes/limit-check.php';
 
 $currentUser = Auth::require();
 $userProjects = getUserProjects($currentUser['id']);
@@ -20,6 +22,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $desc = sanitize($_POST['description'] ?? '');
         $website = trim($_POST['website'] ?? '');
         if (empty($name)) { flash('error','Name is required.'); redirect($_SERVER['REQUEST_URI']); }
+        // ── Limit check: max_projects ─────────────────────────────────
+        $__co = BillingService::getCompany($currentUser['id']);
+        $__cid = $__co ? (int)$__co['id'] : (int)$currentUser['id'];
+        $__projCount = DB::count("SELECT COUNT(*) FROM ff_projects WHERE owner_id = ?", [$currentUser['id']]);
+        LimitCheck::gateNumeric($__cid, 'max_projects', $__projCount, 'project', true, APP_URL . '/admin/billing.php');
+        // ─────────────────────────────────────────────────────────────
         $s = slug($name);
         // Ensure unique slug
         $i = 0;
