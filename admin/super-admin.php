@@ -1,6 +1,7 @@
 <?php
 require_once dirname(__DIR__) . '/config.php';
 require_once dirname(__DIR__) . '/includes/db.php';
+require_once dirname(__DIR__) . '/includes/db-manager.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/auth.php';
 
@@ -18,17 +19,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
     if ($action === 'toggle_user' && isset($_POST['uid'])) {
         $uid = (int)$_POST['uid'];
         $u = DB::fetch("SELECT is_active FROM ff_users WHERE id = ?", [$uid]);
-        if ($u) { DB::update('ff_users', ['is_active' => $u['is_active'] ? 0 : 1], 'id = ?', [$uid]); }
+        if ($u) {
+            DB::update('ff_users', ['is_active' => $u['is_active'] ? 0 : 1], 'id = ?', [$uid]);
+            DBManager::logSuperAdminAction($currentUser['id'], 'toggle_user', null, $uid, ['is_active' => $u['is_active'] ? 0 : 1]);
+        }
     }
     if ($action === 'delete_user' && isset($_POST['uid'])) {
+        DBManager::logSuperAdminAction($currentUser['id'], 'delete_user', null, (int)$_POST['uid']);
         DB::delete('ff_users', 'id = ? AND is_super_admin = 0', [(int)$_POST['uid']]);
         flash('success', 'User deleted.');
     }
     if ($action === 'impersonate' && isset($_POST['uid'])) {
-        Auth::start();
-        $_SESSION['impersonate_original'] = $_SESSION['user_id'];
         $impUser = DB::fetch("SELECT * FROM ff_users WHERE id = ?", [(int)$_POST['uid']]);
-        if ($impUser) { $_SESSION['user_id'] = $impUser['id']; }
+        if ($impUser) {
+            DBManager::logSuperAdminAction($currentUser['id'], 'impersonate', $impUser['company_id'] ?? null, $impUser['id'], [
+                'name' => $impUser['name'], 'email' => $impUser['email'],
+            ]);
+            Auth::start();
+            $_SESSION['impersonate_original'] = $_SESSION['user_id'];
+            $_SESSION['user_id'] = $impUser['id'];
+        }
         redirect(APP_URL . '/admin/index.php');
     }
     redirect(APP_URL . '/admin/super-admin.php');
@@ -69,7 +79,7 @@ include dirname(__DIR__) . '/includes/header.php';
   <!-- Tabs -->
   <div class="border-b border-gray-200 bg-white px-6">
     <div class="flex gap-1">
-      <?php foreach (['overview'=>'Overview','users'=>'Users','companies'=>'Companies','plans'=>'Plans','system'=>'System'] as $k=>$label): ?>
+      <?php foreach (['overview'=>'Overview','users'=>'Users','companies'=>'Companies','databases'=>'Databases','plans'=>'Plans','system'=>'System'] as $k=>$label): ?>
       <a href="?tab=<?= $k ?>"
          class="px-4 py-3 text-sm font-medium border-b-2 transition <?= $tab === $k ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700' ?>">
         <?= $label ?>
@@ -210,29 +220,125 @@ include dirname(__DIR__) . '/includes/header.php';
     </div>
 
     <?php elseif ($tab === 'companies'): ?>
+    <?php
+    $companies = DB::fetchAll("
+      SELECT c.*,
+        (SELECT COUNT(*) FROM ff_users u WHERE u.company_id = c.id) AS user_count,
+        (SELECT COUNT(*) FROM ff_projects p WHERE p.company_id = c.id) AS project_count,
+        (SELECT cd.db_status FROM ff_company_databases cd WHERE cd.company_id = c.id LIMIT 1) AS db_status
+      FROM ff_companies c ORDER BY c.created_at DESC LIMIT 100
+    ");
+    ?>
     <div class="ff-card overflow-hidden">
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <p class="text-sm font-semibold text-gray-700"><?= count($companies) ?> Companies</p>
+        <span class="text-xs text-gray-400">Click a row to open company detail</span>
+      </div>
       <table class="w-full text-sm ff-table">
         <thead>
           <tr class="border-b border-gray-100 bg-gray-50">
             <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Company</th>
             <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Plan</th>
+            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Users</th>
+            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Tenant DB</th>
             <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
             <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Created</th>
+            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
-          <?php $companies = DB::fetchAll("SELECT * FROM ff_companies ORDER BY created_at DESC LIMIT 50"); ?>
           <?php foreach ($companies as $co): ?>
-          <tr>
+          <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='<?= APP_URL ?>/admin/super-admin-company.php?id=<?= $co['id'] ?>'">
             <td class="py-3 px-4">
-              <p class="font-medium text-gray-800 text-sm"><?= h($co['name']) ?></p>
-              <p class="text-xs text-gray-400"><?= h($co['slug']) ?> · <?= h($co['email'] ?? '') ?></p>
+              <div class="flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                     style="background:linear-gradient(135deg,#6366f1,#8b5cf6)"><?= strtoupper(substr($co['name'],0,1)) ?></div>
+                <div>
+                  <p class="font-medium text-gray-800 text-sm"><?= h($co['name']) ?></p>
+                  <p class="text-xs text-gray-400"><?= h($co['email'] ?? '') ?></p>
+                </div>
+              </div>
             </td>
-            <td class="py-3 px-4"><span class="badge bg-indigo-100 text-indigo-700 capitalize"><?= h($co['plan']) ?></span></td>
-            <td class="py-3 px-4"><span class="badge <?= $co['is_active'] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' ?>"><?= $co['is_active'] ? 'Active' : 'Suspended' ?></span></td>
+            <td class="py-3 px-4"><span class="badge bg-indigo-100 text-indigo-700 capitalize"><?= h($co['plan'] ?: 'free') ?></span></td>
+            <td class="py-3 px-4 text-center text-xs font-semibold text-gray-700">
+              <?= $co['user_count'] ?> / <?= $co['project_count'] ?> proj
+            </td>
+            <td class="py-3 px-4">
+              <?php $dbs = $co['db_status'] ?? null; ?>
+              <?php if ($dbs === 'active'): ?>
+                <span class="badge bg-emerald-100 text-emerald-700"><i class="fas fa-database text-xs"></i> Active</span>
+              <?php elseif ($dbs === 'failed'): ?>
+                <span class="badge bg-red-100 text-red-700"><i class="fas fa-exclamation-triangle text-xs"></i> Failed</span>
+              <?php elseif ($dbs === 'pending'): ?>
+                <span class="badge bg-yellow-100 text-yellow-700"><i class="fas fa-clock text-xs"></i> Pending</span>
+              <?php else: ?>
+                <span class="badge bg-gray-100 text-gray-400">–</span>
+              <?php endif; ?>
+            </td>
+            <td class="py-3 px-4"><span class="badge <?= ($co['is_active'] ?? 1) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' ?>"><?= ($co['is_active'] ?? 1) ? 'Active' : 'Suspended' ?></span></td>
             <td class="py-3 px-4 text-xs text-gray-400"><?= timeAgo($co['created_at']) ?></td>
+            <td class="py-3 px-4" onclick="event.stopPropagation()">
+              <a href="<?= APP_URL ?>/admin/super-admin-company.php?id=<?= $co['id'] ?>"
+                 class="px-2 py-1 text-xs border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-50 transition">
+                <i class="fas fa-eye mr-1"></i> View
+              </a>
+            </td>
           </tr>
           <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+
+    <?php elseif ($tab === 'databases'): ?>
+    <?php $allDbs = DBManager::listCompanyDatabases(); ?>
+    <div class="ff-card overflow-hidden">
+      <div class="p-4 border-b border-gray-100">
+        <h2 class="text-sm font-semibold text-gray-700">
+          Tenant Database Registry — <?= count($allDbs) ?> entries
+        </h2>
+        <p class="text-xs text-gray-400 mt-0.5">All provisioned company databases. Credentials are AES-256 encrypted in the master DB.</p>
+      </div>
+      <table class="w-full text-sm ff-table">
+        <thead>
+          <tr class="border-b border-gray-100 bg-gray-50">
+            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Company</th>
+            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Database Name</th>
+            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Host</th>
+            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">DB User</th>
+            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
+            <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Provisioned</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          <?php foreach ($allDbs as $db): ?>
+          <tr class="hover:bg-gray-50">
+            <td class="py-3 px-4">
+              <a href="<?= APP_URL ?>/admin/super-admin-company.php?id=<?= $db['company_id'] ?>"
+                 class="font-medium text-indigo-600 hover:underline text-sm">
+                <?= h($db['company_name'] ?? 'Company #' . $db['company_id']) ?>
+              </a>
+            </td>
+            <td class="py-3 px-4 font-mono text-xs text-gray-700"><?= h($db['db_name']) ?></td>
+            <td class="py-3 px-4 text-xs text-gray-500"><?= h($db['db_host']) ?>:<?= $db['db_port'] ?></td>
+            <td class="py-3 px-4 text-xs font-mono text-gray-600"><?= h($db['db_user']) ?></td>
+            <td class="py-3 px-4">
+              <span class="badge <?= match($db['db_status']) {
+                'active'    => 'bg-green-100 text-green-700',
+                'failed'    => 'bg-red-100 text-red-700',
+                'suspended' => 'bg-orange-100 text-orange-700',
+                default     => 'bg-yellow-100 text-yellow-700',
+              } ?>"><?= h($db['db_status']) ?></span>
+            </td>
+            <td class="py-3 px-4 text-xs text-gray-400">
+              <?= $db['provisioned_at'] ? timeAgo($db['provisioned_at']) : '–' ?>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+          <?php if (!$allDbs): ?>
+          <tr><td colspan="6" class="py-8 text-center text-sm text-gray-400">
+            No tenant databases provisioned yet. They are created automatically when companies sign up.
+          </td></tr>
+          <?php endif; ?>
         </tbody>
       </table>
     </div>

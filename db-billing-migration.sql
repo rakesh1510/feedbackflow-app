@@ -148,3 +148,23 @@ ALTER TABLE `ff_companies`
   ADD COLUMN IF NOT EXISTS `vat_rate`        decimal(5,2) NOT NULL DEFAULT 0.00 AFTER `vat_number`,
   ADD COLUMN IF NOT EXISTS `plan_expires_at` datetime DEFAULT NULL     AFTER `plan`,
   ADD COLUMN IF NOT EXISTS `billing_cycle`   enum('monthly','yearly') NOT NULL DEFAULT 'monthly' AFTER `plan_expires_at`;
+
+-- ────────────────────────────────────────────────────────────
+-- 8. Add company_id to ff_campaigns (needed for usage tracking)
+-- ────────────────────────────────────────────────────────────
+ALTER TABLE `ff_campaigns`
+  ADD COLUMN IF NOT EXISTS `company_id` int(11) DEFAULT NULL AFTER `id`;
+
+-- Backfill: link existing campaigns to their creator's company
+UPDATE `ff_campaigns` c
+  JOIN `ff_users` u ON u.id = c.created_by
+  SET c.company_id = u.company_id
+  WHERE c.company_id IS NULL AND u.company_id IS NOT NULL;
+
+-- ────────────────────────────────────────────────────────────
+-- 9. Add company_id to ff_sms_log (if table exists)
+-- ────────────────────────────────────────────────────────────
+-- NOTE: Only run if you have an ff_sms_log table.
+-- If the table does not exist yet this line is safe to skip.
+-- ALTER TABLE `ff_sms_log`
+--   ADD COLUMN IF NOT EXISTS `company_id` int(11) DEFAULT NULL AFTER `id`;

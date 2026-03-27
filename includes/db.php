@@ -1,27 +1,103 @@
 <?php
 require_once dirname(__DIR__) . '/config.php';
+require_once __DIR__ . '/db-manager.php';
 
 class DB {
-    private static $pdo = null;
+    private static array $pdoPool = [];
+    private static ?string $forcedMode = null; // master|tenant|tenant_company
+    private static ?int $forcedCompanyId = null;
+
+    public static function useMaster(): void {
+        self::$forcedMode = 'master';
+        self::$forcedCompanyId = null;
+    }
+
+    public static function useTenantForCompany(int $companyId): void {
+        self::$forcedMode = 'tenant_company';
+        self::$forcedCompanyId = $companyId;
+    }
+
+    public static function useTenantFromSession(): void {
+        self::$forcedMode = 'tenant';
+        self::$forcedCompanyId = null;
+    }
+
+    public static function resetContext(): void {
+        self::$forcedMode = null;
+        self::$forcedCompanyId = null;
+    }
+
+    public static function withMaster(callable $callback) {
+        $prevMode = self::$forcedMode;
+        $prevCompany = self::$forcedCompanyId;
+        self::useMaster();
+        try {
+            return $callback();
+        } finally {
+            self::$forcedMode = $prevMode;
+            self::$forcedCompanyId = $prevCompany;
+        }
+    }
+
+    public static function withTenant(int $companyId, callable $callback) {
+        $prevMode = self::$forcedMode;
+        $prevCompany = self::$forcedCompanyId;
+        self::useTenantForCompany($companyId);
+        try {
+            return $callback();
+        } finally {
+            self::$forcedMode = $prevMode;
+            self::$forcedCompanyId = $prevCompany;
+        }
+    }
 
     public static function connect(): PDO {
-        if (self::$pdo === null) {
-            $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
-            $options = [
-                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES   => false,
-            ];
-            try {
-                self::$pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
-            } catch (PDOException $e) {
-                if (DEBUG_MODE) {
-                    die("DB Error: " . $e->getMessage());
-                }
-                die("Database connection failed. Please check your config.php settings.");
+        $mode = self::resolveMode();
+
+        if ($mode === 'master') {
+            return DBManager::master();
+        }
+
+        $companyId = self::resolveCompanyId();
+        if (!$companyId) {
+            return DBManager::master();
+        }
+
+        $key = 'tenant_' . $companyId;
+        if (!isset(self::$pdoPool[$key])) {
+            self::$pdoPool[$key] = DBManager::forCompany($companyId);
+        }
+        return self::$pdoPool[$key];
+    }
+
+    private static function resolveMode(): string {
+        if (self::$forcedMode === 'master') {
+            return 'master';
+        }
+        if (self::$forcedMode === 'tenant_company' || self::$forcedMode === 'tenant') {
+            return 'tenant';
+        }
+
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            if (!empty($_SESSION['super_admin_id'])) {
+                return 'master';
+            }
+            if (!empty($_SESSION['company_id'])) {
+                return 'tenant';
             }
         }
-        return self::$pdo;
+
+        return 'master';
+    }
+
+    private static function resolveCompanyId(): ?int {
+        if (self::$forcedMode === 'tenant_company') {
+            return self::$forcedCompanyId ?: null;
+        }
+        if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['company_id'])) {
+            return (int)$_SESSION['company_id'];
+        }
+        return null;
     }
 
     public static function query(string $sql, array $params = []): PDOStatement {
@@ -31,11 +107,15 @@ class DB {
     }
 
     public static function fetch(string $sql, array $params = []): ?array {
-        return self::query($sql, $params)->fetch() ?: null;
+        return self::query($sql, $params)->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
     public static function fetchAll(string $sql, array $params = []): array {
-        return self::query($sql, $params)->fetchAll();
+        return self::query($sql, $params)->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public static function fetchColumn(string $sql, array $params = []) {
+        return self::query($sql, $params)->fetchColumn();
     }
 
     public static function insert(string $table, array $data): int {

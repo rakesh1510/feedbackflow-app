@@ -1,8 +1,17 @@
 <?php
 require_once dirname(__DIR__) . '/config.php';
 require_once dirname(__DIR__) . '/includes/db.php';
+require_once dirname(__DIR__) . '/includes/db-manager.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 
+
+$slug = $_GET['slug'] ?? '';
+if ($slug) {
+    $resolvedCompanyId = DBManager::findCompanyIdByProjectSlug($slug);
+    if ($resolvedCompanyId) {
+        DB::useTenantForCompany($resolvedCompanyId);
+    }
+}
 $slug = trim($_GET['slug'] ?? '');
 if (!$slug) {
     // Show first public status page

@@ -5,10 +5,22 @@
  */
 require_once dirname(__DIR__) . '/config.php';
 require_once dirname(__DIR__) . '/includes/db.php';
+require_once dirname(__DIR__) . '/includes/db-manager.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 
 // Resolve project + link context
 $token      = sanitize($_GET['token'] ?? '');
+
+$token = $_GET['token'] ?? '';
+if ($token) {
+    $resolvedCompanyId = DBManager::findCompanyIdByProjectSlug($token);
+    if (!$resolvedCompanyId) {
+        $resolvedCompanyId = DBManager::findCompanyIdByWidgetKey($token);
+    }
+    if ($resolvedCompanyId) {
+        DB::useTenantForCompany($resolvedCompanyId);
+    }
+}
 $slug       = sanitize($_GET['slug'] ?? '');
 $source     = sanitize($_GET['source'] ?? 'direct');
 $preRating  = (int)($_GET['r'] ?? 0); // pre-selected star rating from email buttons

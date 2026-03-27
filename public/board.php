@@ -1,9 +1,18 @@
 <?php
 require_once dirname(__DIR__) . '/config.php';
 require_once dirname(__DIR__) . '/includes/db.php';
+require_once dirname(__DIR__) . '/includes/db-manager.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/auth.php';
 
+
+$slug = $_GET['slug'] ?? '';
+if ($slug) {
+    $resolvedCompanyId = DBManager::findCompanyIdByProjectSlug($slug);
+    if ($resolvedCompanyId) {
+        DB::useTenantForCompany($resolvedCompanyId);
+    }
+}
 $slug = $_GET['slug'] ?? '';
 $project = $slug ? DB::fetch("SELECT * FROM ff_projects WHERE slug = ? AND is_public = 1", [$slug]) : null;
 if (!$project) { http_response_code(404); die('<h1>Board not found</h1>'); }

@@ -2,8 +2,17 @@
 // Public Feedback API (JSON)
 require_once dirname(__DIR__) . '/config.php';
 require_once dirname(__DIR__) . '/includes/db.php';
+require_once dirname(__DIR__) . '/includes/db-manager.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 
+
+$key = $_POST['key'] ?? $_GET['key'] ?? $_SERVER['HTTP_X_API_KEY'] ?? '';
+if ($key) {
+    $resolvedCompanyId = DBManager::findCompanyIdByWidgetKey($key);
+    if ($resolvedCompanyId) {
+        DB::useTenantForCompany($resolvedCompanyId);
+    }
+}
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');

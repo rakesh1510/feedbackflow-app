@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/db-manager.php';
 require_once __DIR__ . '/functions.php';
 
 class Auth {
@@ -18,29 +19,30 @@ class Auth {
     }
 
     public static function login(string $email, string $password): bool {
-        $user = DB::fetch("SELECT * FROM ff_users WHERE email = ? AND is_active = 1", [$email]);
-        if (!$user || !password_verify($password, $user['password'])) {
-            return false;
+        self::start();
+        $master = DBManager::master();
+        $stmt = $master->query("SELECT company_id, db_name FROM ff_company_databases WHERE db_status = 'active'");
+        $companies = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        foreach ($companies as $company) {
+            try {
+                $tenant = DBManager::forCompany((int)$company['company_id']);
+                $userStmt = $tenant->prepare("SELECT * FROM ff_users WHERE email = ? AND is_active = 1 LIMIT 1");
+                $userStmt->execute([strtolower($email)]);
+                $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+                if ($user && password_verify($password, $user['password'])) {
+                    self::setSession($user, (int)$company['company_id']);
+                    $upd = $tenant->prepare("UPDATE ff_users SET last_login = NOW() WHERE id = ?");
+                    $upd->execute([$user['id']]);
+                    return true;
+                }
+            } catch (Throwable $e) {}
         }
-        self::setSession($user);
-        DB::query("UPDATE ff_users SET last_login = NOW() WHERE id = ?", [$user['id']]);
-        return true;
+        return false;
     }
 
     public static function register(string $name, string $email, string $password): int|false {
-        if (DB::fetch("SELECT id FROM ff_users WHERE email = ?", [$email])) {
-            return false; // Email already exists
-        }
-        $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-        $userId = DB::insert('ff_users', [
-            'name'     => $name,
-            'email'    => $email,
-            'password' => $hash,
-            'role'     => 'owner',
-        ]);
-        $user = DB::fetch("SELECT * FROM ff_users WHERE id = ?", [$userId]);
-        self::setSession($user);
-        return $userId;
+        throw new RuntimeException('Use company signup flow from index.php for tenant registration.');
     }
 
     public static function logout(): void {
@@ -55,10 +57,13 @@ class Auth {
 
     public static function user(): ?array {
         self::start();
-        if (!empty($_SESSION['user_id'])) {
-            return DB::fetch("SELECT * FROM ff_users WHERE id = ? AND is_active = 1", [$_SESSION['user_id']]);
+        if (empty($_SESSION['user_id']) || empty($_SESSION['company_id'])) {
+            return null;
         }
-        return null;
+        DB::useTenantForCompany((int)$_SESSION['company_id']);
+        $user = DB::fetch("SELECT * FROM ff_users WHERE id = ? AND is_active = 1", [$_SESSION['user_id']]);
+        DB::resetContext();
+        return $user ?: null;
     }
 
     public static function check(): bool {
@@ -87,10 +92,13 @@ class Auth {
         return $member && in_array($member['role'], ['admin', 'manager']);
     }
 
-    private static function setSession(array $user): void {
+    private static function setSession(array $user, int $companyId = 0): void {
         self::start();
         session_regenerate_id(true);
         $_SESSION['user_id'] = $user['id'];
-        $_SESSION['user_role'] = $user['role'];
+        $_SESSION['user_role'] = $user['role'] ?? null;
+        if ($companyId > 0) {
+            $_SESSION['company_id'] = $companyId;
+        }
     }
 }

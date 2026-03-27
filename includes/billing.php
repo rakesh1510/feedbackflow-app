@@ -10,26 +10,28 @@ class BillingService {
     // ------------------------------------------------------------------ //
 
     public static function getPlan(string $slug): ?array {
-        return DB::fetch("SELECT * FROM ff_billing_plans WHERE slug = ? AND is_active = 1", [$slug]);
+        return DB::withMaster(fn() => DB::fetch("SELECT * FROM ff_billing_plans WHERE slug = ? AND is_active = 1", [$slug]));
     }
 
     public static function getAllPlans(): array {
-        return DB::fetchAll("SELECT * FROM ff_billing_plans WHERE is_active = 1 ORDER BY sort_order");
+        return DB::withMaster(fn() => DB::fetchAll("SELECT * FROM ff_billing_plans WHERE is_active = 1 ORDER BY sort_order"));
     }
 
     /** Return the active company row (incl. plan slug) for a user. */
     public static function getCompany(int $userId): ?array {
-        return DB::fetch(
-            "SELECT c.* FROM ff_companies c
-             JOIN ff_users u ON u.company_id = c.id
-             WHERE u.id = ?",
-            [$userId]
-        );
+        $companyId = (int)($_SESSION['company_id'] ?? 0);
+        if ($companyId <= 0) {
+            return null;
+        }
+        return DB::withMaster(fn() => DB::fetch(
+            "SELECT * FROM ff_companies WHERE id = ?",
+            [$companyId]
+        ));
     }
 
     /** Return company row directly by id. */
     public static function getCompanyById(int $companyId): ?array {
-        return DB::fetch("SELECT * FROM ff_companies WHERE id = ?", [$companyId]);
+        return DB::withMaster(fn() => DB::fetch("SELECT * FROM ff_companies WHERE id = ?", [$companyId]));
     }
 
     // ------------------------------------------------------------------ //
@@ -97,12 +99,16 @@ class BillingService {
         }
 
         // --- Admin overrides (override replaces the computed value) ---
-        $overrides = DB::fetchAll(
-            "SELECT resource, override_value FROM ff_admin_overrides WHERE company_id = ?",
-            [$companyId]
-        );
-        foreach ($overrides as $o) {
-            $limits[$o['resource']] = (int)$o['override_value'];
+        try {
+            $overrides = DB::withMaster(fn() => DB::fetchAll(
+                "SELECT resource, override_value FROM ff_admin_overrides WHERE company_id = ?",
+                [$companyId]
+            ));
+            foreach ($overrides as $o) {
+                $limits[$o['resource']] = (int)$o['override_value'];
+            }
+        } catch (\Throwable $e) {
+            // ff_admin_overrides table not yet created — skip overrides
         }
 
         return $limits;
@@ -142,40 +148,57 @@ class BillingService {
 
     public static function getUsage(int $companyId): array {
         $monthStart = date('Y-m-01 00:00:00');
+
+        $safe = function (callable $fn): int {
+            try { return (int)$fn(); } catch (\Throwable $e) { return 0; }
+        };
+
         return [
-            'projects'  => DB::count(
-                "SELECT COUNT(*) FROM ff_projects WHERE owner_id IN
-                 (SELECT id FROM ff_users WHERE company_id = ?)",
-                [$companyId]
-            ),
-            'users'     => DB::count(
-                "SELECT COUNT(*) FROM ff_users WHERE company_id = ? AND is_active = 1",
-                [$companyId]
-            ),
-            'feedback'  => DB::count(
-                "SELECT COUNT(*) FROM ff_feedback f
-                 JOIN ff_projects p ON p.id = f.project_id
-                 WHERE p.owner_id IN (SELECT id FROM ff_users WHERE company_id = ?)
-                 AND f.created_at >= ?",
-                [$companyId, $monthStart]
-            ),
-            'campaigns' => DB::count(
-                "SELECT COUNT(*) FROM ff_campaigns
-                 WHERE company_id = ? AND created_at >= ?",
-                [$companyId, $monthStart]
-            ),
-            'emails'    => DB::count(
-                "SELECT COUNT(*) FROM ff_campaign_sends cs
-                 JOIN ff_campaigns c ON c.id = cs.campaign_id
-                 WHERE c.company_id = ? AND cs.sent_at >= ?",
-                [$companyId, $monthStart]
-            ),
-            'whatsapp'  => 0, // extend when WhatsApp send log table exists
-            'sms'       => DB::count(
-                "SELECT COUNT(*) FROM ff_sms_log
-                 WHERE company_id = ? AND sent_at >= ?",
-                [$companyId, $monthStart]
-            ),
+            'projects' => $safe(function () use ($companyId) {
+                return DB::count(
+                    "SELECT COUNT(*) FROM ff_projects WHERE owner_id IN
+                     (SELECT id FROM ff_users WHERE company_id = ?)",
+                    [$companyId]
+                );
+            }),
+            'users' => $safe(function () use ($companyId) {
+                return DB::count(
+                    "SELECT COUNT(*) FROM ff_users WHERE company_id = ? AND is_active = 1",
+                    [$companyId]
+                );
+            }),
+            'feedback' => $safe(function () use ($companyId, $monthStart) {
+                return DB::count(
+                    "SELECT COUNT(*) FROM ff_feedback f
+                     JOIN ff_projects p ON p.id = f.project_id
+                     WHERE p.owner_id IN (SELECT id FROM ff_users WHERE company_id = ?)
+                     AND f.created_at >= ?",
+                    [$companyId, $monthStart]
+                );
+            }),
+            'campaigns' => $safe(function () use ($companyId, $monthStart) {
+                return DB::count(
+                    "SELECT COUNT(*) FROM ff_campaigns
+                     WHERE company_id = ? AND created_at >= ?",
+                    [$companyId, $monthStart]
+                );
+            }),
+            'emails' => $safe(function () use ($companyId, $monthStart) {
+                return DB::count(
+                    "SELECT COUNT(*) FROM ff_campaign_sends cs
+                     JOIN ff_campaigns c ON c.id = cs.campaign_id
+                     WHERE c.company_id = ? AND cs.sent_at >= ?",
+                    [$companyId, $monthStart]
+                );
+            }),
+            'whatsapp' => 0,
+            'sms' => $safe(function () use ($companyId, $monthStart) {
+                return DB::count(
+                    "SELECT COUNT(*) FROM ff_sms_log
+                     WHERE company_id = ? AND sent_at >= ?",
+                    [$companyId, $monthStart]
+                );
+            }),
         ];
     }
 
@@ -185,24 +208,32 @@ class BillingService {
 
     /** All available add-ons from catalog */
     public static function getAvailableAddons(): array {
-        return DB::fetchAll(
-            "SELECT * FROM ff_addons WHERE is_active = 1 ORDER BY sort_order"
-        );
+        try {
+            return DB::fetchAll(
+                "SELECT * FROM ff_addons WHERE is_active = 1 ORDER BY sort_order"
+            );
+        } catch (\Throwable $e) {
+            return []; // ff_addons table not yet created
+        }
     }
 
     /** Add-ons purchased by a company (with addon catalog detail) */
     public static function getCompanyAddons(int $companyId): array {
-        return DB::fetchAll(
-            "SELECT ca.quantity, ca.activated_at, ca.expires_at,
-                    a.id as addon_id, a.slug, a.name, a.description, a.type,
-                    a.resource, a.unit_label, a.units_per_qty, a.price_per_qty,
-                    a.icon, a.min_qty, a.max_qty
-             FROM ff_company_addons ca
-             JOIN ff_addons a ON a.id = ca.addon_id
-             WHERE ca.company_id = ?
-             ORDER BY a.sort_order",
-            [$companyId]
-        );
+        try {
+            return DB::fetchAll(
+                "SELECT ca.quantity, ca.activated_at, ca.expires_at,
+                        a.id as addon_id, a.slug, a.name, a.description, a.type,
+                        a.resource, a.unit_label, a.units_per_qty, a.price_per_qty,
+                        a.icon, a.min_qty, a.max_qty
+                 FROM ff_company_addons ca
+                 JOIN ff_addons a ON a.id = ca.addon_id
+                 WHERE ca.company_id = ?
+                 ORDER BY a.sort_order",
+                [$companyId]
+            );
+        } catch (\Throwable $e) {
+            return []; // ff_company_addons / ff_addons table not yet created
+        }
     }
 
     /**

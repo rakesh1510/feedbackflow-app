@@ -2,8 +2,17 @@
 // Public vote API endpoint
 require_once dirname(__DIR__) . '/config.php';
 require_once dirname(__DIR__) . '/includes/db.php';
+require_once dirname(__DIR__) . '/includes/db-manager.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 
+
+$feedbackId = (int)($_POST['feedback_id'] ?? $_GET['feedback_id'] ?? 0);
+if ($feedbackId > 0) {
+    $resolvedCompanyId = DBManager::findCompanyIdByFeedbackId($feedbackId);
+    if ($resolvedCompanyId) {
+        DB::useTenantForCompany($resolvedCompanyId);
+    }
+}
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');

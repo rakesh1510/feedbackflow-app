@@ -89,10 +89,14 @@ $prompts        = BillingService::upgradePrompts($companyId, $usage, 80);
 $addonMap       = [];
 foreach ($companyAddons as $ca) { $addonMap[$ca['addon_id']] = $ca; }
 
-$invoices       = DB::fetchAll(
-    "SELECT * FROM ff_invoices WHERE company_id = ? ORDER BY created_at DESC LIMIT 20",
-    [$companyId]
-);
+try {
+    $invoices = DB::fetchAll(
+        "SELECT * FROM ff_invoices WHERE company_id = ? ORDER BY created_at DESC LIMIT 20",
+        [$companyId]
+    );
+} catch (\Throwable $e) {
+    $invoices = []; // ff_invoices not yet migrated
+}
 
 $billingCycle   = $company['billing_cycle'] ?? 'monthly';
 $addonMonthly   = BillingService::addonsMonthlyTotal($companyId);
